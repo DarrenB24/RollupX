@@ -47,14 +47,20 @@ identity and rejects mismatched reuse; ports shut down cleanly. Full dependency
 tests must pass before Phase 1 is claimed complete. A dependency-free validation
 path may verify portable modules but is not a substitute for networking tests.
 
-## Phase 2 — transaction engine (depends on verified Phase 1)
+## Phase 2 — transaction engine (offline core underway; durable acceptance pending)
 
-- [ ] Golden canonical payload/ID/signature vectors and Ethereum Keccak verification.
-- [ ] OpenSSL secp256k1 signing, public-key recovery, strict low-s validation.
-- [ ] Immutable funded genesis registry, checked uint64 arithmetic and nonce rules.
+On the user's continuation request, independently testable offline components were
+implemented while Phase 1 networking remains blocked. This advances the transaction
+core without enabling cluster writes or claiming either milestone fully accepted.
+
+- [x] Golden canonical payload/ID/signature vectors and Ethereum Keccak verification.
+- [x] OpenSSL secp256k1 signing, public-key recovery, strict low-s validation.
+- [x] In-memory immutable funded genesis registry, checked arithmetic and nonce rules.
+- [x] Deterministic reference execution with bounded ID deduplication and rejection results.
+- [x] Offline wallet account generation, signing, and verification.
 - [ ] RocksDB atomic batch execution, receipts, durable IDs, applied marker.
 - [ ] Retry semantics, concurrent duplicate admission, deterministic rejection.
-- [ ] CLI account generation/signing, query balances/nonces/receipts.
+- [ ] Redundant protobuf field validation and durable query APIs/CLI.
 - [ ] Process-kill hooks before/after storage effects and replay tests.
 
 Acceptance: valid transfers durable across restart, bad signature/nonce/chain,
@@ -159,8 +165,36 @@ gtest_dir=/opt/homebrew/Caskroom/miniforge/base/pkgs/gtest-1.15.2-h420ef59_0/lib
 "$ctest_bin" --test-dir build-foundation-cmake --output-on-failure -R config
 ```
 
-Next required action: in an environment with dependencies, socket access, writable
-Git metadata and network, run the full build/CTest and Compose commands in
-docs/development.md, fix any integration failures, commit/push to the requested
-repository, and only then begin Phase 2. No transaction, Raft, Solidity, Kubernetes,
-or performance milestone has been marked complete.
+Next integration gate: in an environment with dependencies and socket access, run
+the full build/CTest and Compose commands in docs/development.md and fix any failures.
+Phase 2 can continue as independently tested libraries, but durable acceptance
+requires real RocksDB crash tests before Raft integration. No durable transaction,
+Raft, Solidity, Kubernetes, or performance milestone has been marked complete.
+
+## Continuation: offline cryptography and transaction execution
+
+The user initialized Git between turns: the current baseline is `7b4f4c2` and origin
+is `https://github.com/DarrenB24/RollupX.git`. GitHub DNS still fails from this sandbox.
+
+Added `ROLLUPX_CORE_ONLY`, the crypto/execution libraries, `rollupx-wallet`, frozen
+transaction vectors, 16 GoogleTest cases, and a subprocess wallet smoke test. The
+normal full build and CI now include these tests; a separate offline-core CI job
+does not depend on gRPC/RocksDB. Keccak is compared against OpenSSL 3.6.1 and frozen
+Ethereum vectors. Signature recovery is checked against EIP-155 and EVP verification.
+The deterministic tests cover 2000 seeded transitions plus replay, rejection,
+arithmetic boundaries, bounded receipts, malformed envelopes, and concurrent
+signature verification. This is correctness testing, not a throughput benchmark.
+
+Final local verification: Debug CMake build and all three registered offline CTest
+entries passed (configuration, 16 core GoogleTests, wallet subprocess smoke). A
+separate ASan/UBSan build passed the same suite with no reported sanitizer failures.
+The OpenSSL Keccak oracle ran successfully, with no skipped core tests. The expanded
+test suite caught a transcription typo in the frozen signature fixture; it was
+corrected against the independent reference before these passing runs. CI YAML,
+fixture JSON/field lengths, and shell syntax also passed local checks. Full node,
+RocksDB, Docker, and Raft tests remain unverified as recorded above.
+
+Commit/push attempt for this continuation failed during `git add`:
+`Unable to create .git/index.lock: Operation not permitted`. The existing repository
+and origin can be read, but this agent still cannot update Git metadata. No new
+commit was created and no push ran. Source changes remain in the working tree.

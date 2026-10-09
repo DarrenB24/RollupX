@@ -3,9 +3,9 @@
 An incremental C++20 optimistic-rollup research project: a five-node, crash-tolerant
 replicated transfer ledger with Ethereum settlement as its eventual destination.
 
-**Current milestone: Phase 1 networking foundation, awaiting full integration
-verification.** This repository is not yet a working rollup. Transaction execution,
-Raft consensus, settlement, and performance results are pending. See
+**Current milestone: verified offline transaction core; networking integration
+and durable execution pending.** This repository is not yet a working rollup.
+Raft consensus, durable ledger execution, settlement, and performance results are pending. See
 [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) for the implementation and
 verification record. Unavailable APIs fail explicitly.
 
@@ -23,6 +23,8 @@ Build, tests, and demo instructions are in [development.md](docs/development.md)
 * GoogleTest configuration/storage/mesh tests and a five-process crash/restart script.
 * Five-node Compose deployment with separate volumes, optional monitoring dashboard,
   and GitHub Actions build/test jobs.
+* Ethereum-compatible Keccak, OpenSSL secp256k1 signing/recovery, strict canonical
+  transactions, deterministic in-memory transfer execution, and an offline wallet.
 
 The gRPC/RocksDB source and five-node deployment **have not run on the initial
 development host**: those dependencies are missing and socket binding is denied.
@@ -32,6 +34,17 @@ plan for sanitizer results and exact remaining checks. CI configuration is not a
 claim that CI has run.
 
 ## Build and test
+
+The offline transaction core is buildable independently with OpenSSL 3 and GoogleTest:
+
+```sh
+cmake -S . -B build-core -DROLLUPX_CORE_ONLY=ON -DCMAKE_BUILD_TYPE=Debug
+cmake --build build-core --parallel 2
+ctest --test-dir build-core --output-on-failure
+```
+
+See [offline wallet and execution](docs/crypto-and-execution.md) for signing commands,
+test vectors, and the distinction between reference execution and durable commitment.
 
 Install the native dependencies listed in [development.md](docs/development.md), then:
 
@@ -64,7 +77,8 @@ restart and peer reconnection, not committed-transaction recovery.
 
 ## Next milestones and limitations
 
-Phase 2 adds signed durable transfers. Phase 3 adds actual Raft and failure recovery.
+Phase 2's remaining work adds RocksDB durability and queries to the verified signed
+transfer core. Phase 3 adds actual Raft and failure recovery.
 Only after those correctness gates pass do batching benchmarks, Merkle proofs,
 Solidity fraud challenges, Anvil publication, and Kubernetes follow. No TPS or
 latency result exists yet. Foundry tests and the load generator are not implemented.
@@ -75,8 +89,9 @@ execution-trace protocol. Transport is currently local/private plaintext with no
 cryptographic peer authentication. See the architecture for all trust assumptions.
 
 Requested upstream: [DarrenB24/RollupX](https://github.com/DarrenB24/RollupX).
-The initial workspace denies writes to `.git`, so no local commit, remote
-configuration, or push has been performed from this environment.
+The repository now contains the user's initial commit and configured origin.
+Agent commit/push outcomes and any remaining permission/network blockers are recorded
+in IMPLEMENTATION_PLAN.md.
 
 Raft will provide crash fault tolerance, not Byzantine fault tolerance. This is an
 educational prototype, not production-secure Ethereum settlement or an EVM rollup.

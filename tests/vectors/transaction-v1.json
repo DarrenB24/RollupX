@@ -1,0 +1,12 @@
+{
+  "description": "Public test-only scalar d=1, ephemeral nonce k=1; never use fixed ECDSA nonces for real signing.",
+  "reference": "Payload digest independently generated with OpenSSL 3.6.1 KECCAK-256; r=secp256k1 generator x, s=(digest+r) mod curve order; recovery bit 0.",
+  "chain_id": 31337,
+  "sender": "7e5f4552091a69125d5dfcb7b8c2659029395bdf",
+  "recipient": "3535353535353535353535353535353535353535",
+  "amount": 42,
+  "nonce": 7,
+  "payload": "524f4c4c5550585f54585f56310000000000007a697e5f4552091a69125d5dfcb7b8c2659029395bdf3535353535353535353535353535353535353535000000000000002a0000000000000007",
+  "id": "cf8254a507a0678e1935b6cf15cb070964bfae917a8ce86baacf585d93ab5e7a",
+  "signature": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f817984940bb24017d233a6ed61964e4521211acacce85f912710944ef7b2bda6d34d100"
+}

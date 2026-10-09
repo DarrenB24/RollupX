@@ -1,4 +1,9 @@
-# Initial transaction model (design, not implemented)
+# Initial transaction model
+
+Canonical encoding, cryptographic authentication, and the in-memory reference
+transition are implemented and tested. Durable execution and network submission
+remain pending; tree/settlement sections below are still designs. See
+[crypto-and-execution.md](crypto-and-execution.md).
 
 Version 1 has no fees, EVM, or arbitrary calldata. Integer values are uint64 base
 units. Accounts are 20-byte Ethereum addresses. Account state is (balance, nonce).
@@ -8,7 +13,7 @@ immutable, has at most 16 distinct nonzero addresses, and assigns each an index.
 Unused slots have a zero address, zero balance, and zero nonce. The genesis total
 supply must fit uint64. There is no mint RPC.
 
-## Encoding to freeze with cross-language vectors in Phase 2
+## Version 1 encoding (frozen offline test vector)
 
 The signed payload is the following concatenation, with no lengths or padding:
 
