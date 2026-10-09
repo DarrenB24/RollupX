@@ -1,0 +1,33 @@
+syntax = "proto3";
+package rollupx.v1;
+
+// Canonical bytes and integer semantics are in docs/transaction-model.md.
+// Wire protobuf bytes are NOT the signature preimage. Execution is Phase 2.
+message Transaction {
+  bytes id = 1;                 // Exactly 32 bytes: Keccak-256(canonical_payload).
+  bytes sender = 2;             // Exactly 20 bytes.
+  bytes recipient = 3;          // Exactly 20 bytes.
+  uint64 amount = 4;
+  uint64 nonce = 5;
+  uint64 chain_id = 6;
+  bytes signature = 7;          // Exactly 65 bytes, low-s r || s || recovery_id.
+  bytes canonical_payload = 8;  // Exactly 77 bytes in version 1.
+}
+
+message TransactionId { bytes id = 1; }
+message AccountAddress { bytes address = 1; }
+message Receipt {
+  enum State { STATE_UNSPECIFIED = 0; PENDING = 1; APPLIED = 2; REJECTED = 3; }
+  bytes transaction_id = 1;
+  State state = 2;
+  uint64 batch_number = 3;
+  uint64 log_index = 4;
+  string rejection_reason = 5;
+  // APPLIED means the state-machine result and progress are durably written.
+}
+message MerkleProof {
+  uint64 leaf_index = 1;
+  uint64 leaf_count = 2;
+  repeated bytes siblings = 3;
+  bytes root = 4;
+}

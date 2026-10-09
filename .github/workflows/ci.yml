@@ -1,0 +1,40 @@
+name: C++ foundation
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  build-and-test:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        sanitize: ["OFF", "ON"]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install native dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build libgrpc++-dev libprotobuf-dev protobuf-compiler protobuf-compiler-grpc librocksdb-dev libssl-dev libgtest-dev
+      - name: Configure
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DROLLUPX_SANITIZE=${{ matrix.sanitize }}
+      - name: Compile
+        run: cmake --build build --parallel 2
+      - name: Unit and real five-process integration tests
+        run: ctest --test-dir build --output-on-failure --output-junit results.xml
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results-sanitize-${{ matrix.sanitize }}
+          path: |
+            build/results.xml
+            build/Testing/Temporary/LastTest.log
+  compose-smoke:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Five-node Compose transport and restart
+        run: bash scripts/compose-smoke.sh
+# Foundry and consensus fault jobs are added with their implementations in Phases 3/5.
+# There is no empty passing contract job.

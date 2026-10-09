@@ -1,0 +1,77 @@
+name: rollupx
+
+x-peers: &peers n1=node1:50052,n2=node2:50052,n3=node3:50052,n4=node4:50052,n5=node5:50052
+x-node: &node
+  image: rollupx-node:local
+  build:
+    context: .
+    dockerfile: deploy/docker/Dockerfile
+  init: true
+  stop_grace_period: 10s
+  restart: unless-stopped
+  healthcheck:
+    test: [CMD, curl, --fail, --silent, --max-time, "1", "http://127.0.0.1:9100/healthz"]
+    interval: 2s
+    timeout: 2s
+    retries: 10
+    start_period: 5s
+  networks: [cluster]
+
+services:
+  node1:
+    <<: *node
+    command: [--id, n1, --data-dir, /var/lib/rollupx/db, --peers, *peers, --public-listen, "0.0.0.0:50051", --internal-listen, "0.0.0.0:50052", --http-listen, "0.0.0.0:9100"]
+    volumes: ["node1-data:/var/lib/rollupx"]
+    ports: ["127.0.0.1:50051:50051", "127.0.0.1:9101:9100"]
+  node2:
+    <<: *node
+    command: [--id, n2, --data-dir, /var/lib/rollupx/db, --peers, *peers, --public-listen, "0.0.0.0:50051", --internal-listen, "0.0.0.0:50052", --http-listen, "0.0.0.0:9100"]
+    volumes: ["node2-data:/var/lib/rollupx"]
+    ports: ["127.0.0.1:50052:50051", "127.0.0.1:9102:9100"]
+  node3:
+    <<: *node
+    command: [--id, n3, --data-dir, /var/lib/rollupx/db, --peers, *peers, --public-listen, "0.0.0.0:50051", --internal-listen, "0.0.0.0:50052", --http-listen, "0.0.0.0:9100"]
+    volumes: ["node3-data:/var/lib/rollupx"]
+    ports: ["127.0.0.1:50053:50051", "127.0.0.1:9103:9100"]
+  node4:
+    <<: *node
+    command: [--id, n4, --data-dir, /var/lib/rollupx/db, --peers, *peers, --public-listen, "0.0.0.0:50051", --internal-listen, "0.0.0.0:50052", --http-listen, "0.0.0.0:9100"]
+    volumes: ["node4-data:/var/lib/rollupx"]
+    ports: ["127.0.0.1:50054:50051", "127.0.0.1:9104:9100"]
+  node5:
+    <<: *node
+    command: [--id, n5, --data-dir, /var/lib/rollupx/db, --peers, *peers, --public-listen, "0.0.0.0:50051", --internal-listen, "0.0.0.0:50052", --http-listen, "0.0.0.0:9100"]
+    volumes: ["node5-data:/var/lib/rollupx"]
+    ports: ["127.0.0.1:50055:50051", "127.0.0.1:9105:9100"]
+  prometheus:
+    image: prom/prometheus:v3.2.1
+    profiles: [monitoring]
+    command: [--config.file=/etc/prometheus/prometheus.yml]
+    volumes:
+      - ./deploy/monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    ports: ["127.0.0.1:9090:9090"]
+    networks: [cluster]
+  grafana:
+    image: grafana/grafana:11.6.0
+    profiles: [monitoring]
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_AUTH_DISABLE_LOGIN_FORM: "true"
+    volumes:
+      - ./deploy/monitoring/grafana:/etc/grafana/provisioning:ro
+      - grafana-data:/var/lib/grafana
+    ports: ["127.0.0.1:3000:3000"]
+    networks: [cluster]
+
+networks:
+  cluster: {}
+volumes:
+  node1-data: {}
+  node2-data: {}
+  node3-data: {}
+  node4-data: {}
+  node5-data: {}
+  prometheus-data: {}
+  grafana-data: {}

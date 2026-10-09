@@ -1,0 +1,50 @@
+syntax = "proto3";
+package rollupx.v1;
+import "transaction.proto";
+
+service Ledger {
+  rpc SubmitTransaction(Transaction) returns (Receipt);
+  rpc GetTransaction(TransactionId) returns (Receipt);
+  rpc GetBalance(AccountAddress) returns (BalanceResponse);
+  rpc GetAccountNonce(AccountAddress) returns (NonceResponse);
+  rpc GetBlock(BatchRequest) returns (Batch); // One L2 block is one committed batch.
+  rpc GetBatch(BatchRequest) returns (Batch);
+  rpc GetClusterStatus(Empty) returns (ClusterStatus);
+  rpc GetLeader(Empty) returns (LeaderResponse);
+  rpc GetTransactionProof(TransactionId) returns (MerkleProof);
+}
+message Empty {}
+message BalanceResponse { uint64 balance = 1; uint64 applied_index = 2; }
+message NonceResponse { uint64 nonce = 1; uint64 applied_index = 2; }
+message BatchRequest { uint64 number = 1; }
+message Batch {
+  uint64 number = 1;
+  repeated Transaction transactions = 2;
+  bytes transaction_root = 3;
+  bytes previous_state_root = 4;
+  bytes resulting_state_root = 5;
+  uint64 log_index = 6;
+  bytes data_commitment = 7; // Also binds canonical signature bytes, unlike tx IDs.
+}
+message PeerStatus {
+  string node_id = 1;
+  string endpoint = 2;
+  bool reachable = 3; // Recent successful outbound identity-checked Probe only.
+  uint64 successful_probes = 4;
+  uint64 failed_probes = 5;
+}
+message ClusterStatus {
+  string node_id = 1;
+  string cluster_id = 2;
+  enum Stage { STAGE_UNSPECIFIED = 0; NETWORKING_ONLY = 1; REPLICATED_LEDGER = 2; }
+  Stage stage = 3;
+  enum Role { ROLE_UNSPECIFIED = 0; FOLLOWER = 1; CANDIDATE = 2; LEADER = 3; }
+  Role role = 4;
+  uint64 term = 5;
+  string leader_id = 6;
+  uint64 commit_index = 7;
+  uint64 applied_index = 8;
+  repeated PeerStatus peers = 9;
+  bool transport_ready = 10; // All configured peers recently observed; NOT quorum readiness.
+}
+message LeaderResponse { string node_id = 1; string endpoint = 2; uint64 term = 3; }

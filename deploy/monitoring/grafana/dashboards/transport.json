@@ -1,0 +1,34 @@
+{
+  "uid": "rollupx-transport",
+  "title": "RollupX — Phase 1 transport (no consensus)",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "5s",
+  "time": {"from": "now-15m", "to": "now"},
+  "panels": [
+    {
+      "id": 1, "type": "timeseries", "title": "Transport readiness by node",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+      "datasource": {"type": "prometheus", "uid": "rollupx-prometheus"},
+      "targets": [{"refId": "A", "expr": "rollupx_transport_ready", "legendFormat": "{{instance}}"}]
+    },
+    {
+      "id": 2, "type": "timeseries", "title": "Successful outbound probes per second (not TPS)",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+      "datasource": {"type": "prometheus", "uid": "rollupx-prometheus"},
+      "targets": [{"refId": "A", "expr": "sum by(instance) (rate(rollupx_peer_probes_total{result=\"success\"}[1m]))", "legendFormat": "{{instance}}"}]
+    },
+    {
+      "id": 3, "type": "timeseries", "title": "Reachable peers per node (expected 4)",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+      "datasource": {"type": "prometheus", "uid": "rollupx-prometheus"},
+      "targets": [{"refId": "A", "expr": "sum by(instance) (rollupx_peer_reachable)", "legendFormat": "{{instance}}"}]
+    },
+    {
+      "id": 4, "type": "timeseries", "title": "Failed outbound probes per second",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+      "datasource": {"type": "prometheus", "uid": "rollupx-prometheus"},
+      "targets": [{"refId": "A", "expr": "sum by(instance) (rate(rollupx_peer_probes_total{result=\"failure\"}[1m]))", "legendFormat": "{{instance}}"}]
+    }
+  ]
+}

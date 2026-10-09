@@ -1,0 +1,10 @@
+/build*/
+/.deps/
+/.local/
+/data/
+/reports/
+.DS_Store
+*.log
+contracts/out/
+contracts/cache/
+contracts/broadcast/
