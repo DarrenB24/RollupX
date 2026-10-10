@@ -5,6 +5,27 @@ on:
 permissions:
   contents: read
 jobs:
+  protobuf-wire:
+    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        sanitize: ["OFF", "ON"]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install protobuf and offline-core dependencies
+        run: sudo apt-get update && sudo apt-get install -y cmake ninja-build libssl-dev libgtest-dev libprotobuf-dev protobuf-compiler
+      - name: Build and test real protobuf validation without gRPC or RocksDB
+        run: |
+          cmake -S . -B build-wire -G Ninja -DROLLUPX_WIRE_ONLY=ON -DCMAKE_BUILD_TYPE=Debug -DROLLUPX_SANITIZE=${{ matrix.sanitize }}
+          cmake --build build-wire --parallel 2
+          ctest --test-dir build-wire --output-on-failure --output-junit wire-results.xml
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: wire-results-sanitize-${{ matrix.sanitize }}
+          path: |
+            build-wire/wire-results.xml
+            build-wire/Testing/Temporary/LastTest.log
   standalone-ledger:
     runs-on: ubuntu-24.04
     strategy:

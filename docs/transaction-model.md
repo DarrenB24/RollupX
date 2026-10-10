@@ -39,6 +39,11 @@ messages carry all fields plus payload and signature. Inconsistent redundant
 fields, noncanonical lengths, and unknown versions are rejected. Protobuf wire
 serialization is never the signing preimage.
 
+The generated-protobuf adapter and offline conversion CLI are implemented and
+tested; see [transaction-wire.md](transaction-wire.md) for input limits, unknown
+field policy, alternate wire encodings, and build commands. Ledger RPC integration
+remains pending.
+
 A valid transfer requires amount > 0, matching configured chain, known different
 accounts, exact current nonce, balance >= amount, nonce < UINT64_MAX, and recipient
 balance <= UINT64_MAX - amount. The sender loses amount and increments nonce;

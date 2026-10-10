@@ -199,4 +199,46 @@ ApplicationPlan plan_application(const Genesis& genesis, const LedgerState& stat
   }
   validate_recovery_state(genesis, plan.state, commit_index); return plan;
 }
+RecoveryAudit::RecoveryAudit(Genesis genesis, LedgerState stored, std::uint64_t commit_index,
+    ReceiptLookup receipts, BatchLookup batches)
+  : genesis_(std::move(genesis)), stored_(std::move(stored)), replayed_{0, genesis_.accounts},
+    commit_index_(commit_index), receipts_(std::move(receipts)), batches_(std::move(batches)) {
+  validate_recovery_state(genesis_, stored_, commit_index_);
+  if (!receipts_ || !batches_) throw std::invalid_argument("recovery requires receipt and batch lookups");
+}
+void RecoveryAudit::observe(std::uint64_t key_index, const LedgerBatch& batch) {
+  if (closed_) throw std::logic_error("recovery audit is closed");
+  closed_ = true; // An error cannot be caught and skipped to accept partial history.
+  if (seen_ == std::numeric_limits<std::uint64_t>::max() || key_index != seen_+1 ||
+      key_index > commit_index_ || batch.index != key_index ||
+      batch.transactions.empty() || batch.transactions.size() > kMaxLedgerBatch)
+    throw std::invalid_argument("noncontiguous or malformed committed history");
+  // Pending entries must be authenticated too, before recovery publishes any state.
+  for (const auto& transaction : batch.transactions) (void)authenticate(transaction);
+  if (key_index <= stored_.applied_index) {
+    const auto plan = plan_application(genesis_, replayed_, commit_index_, batch, [&](const Hash& id) {
+      const auto prior = receipts_(id);
+      if (!prior || prior->log_index > replayed_.applied_index) return std::optional<LedgerReceipt>{};
+      const auto original = batches_(prior->log_index);
+      if (!original || original->index != prior->log_index ||
+          prior->transaction_offset >= original->transactions.size() ||
+          original->transactions[prior->transaction_offset].id != id)
+        throw std::runtime_error("receipt does not identify its original command");
+      return prior;
+    });
+    for (const auto& expected : plan.results) {
+      const auto actual = receipts_(expected.transaction_id);
+      if (!actual || *actual != expected) throw std::runtime_error("receipt differs from replayed history");
+    }
+    replayed_ = plan.state;
+  }
+  seen_ = key_index;
+  closed_ = false;
+}
+void RecoveryAudit::finish() {
+  if (closed_) throw std::logic_error("recovery audit is closed");
+  closed_ = true;
+  if (seen_ != commit_index_) throw std::runtime_error("committed log entry missing");
+  if (replayed_ != stored_) throw std::runtime_error("stored state differs from committed history");
+}
 } // namespace rollupx

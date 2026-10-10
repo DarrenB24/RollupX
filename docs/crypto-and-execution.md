@@ -106,8 +106,9 @@ RocksDB WriteBatch covering accounts, receipts, batch data, and applied index.
 
 The RocksDB adapter, durable-query CLI, and explicit standalone development mode
 now exist as source; real-database builds and crash/replay tests remain blocked by
-missing RocksDB. See [persistence.md](persistence.md). Next verify that path,
-validate redundant protobuf fields, and integrate queries without enabling
+missing RocksDB. See [persistence.md](persistence.md). Redundant protobuf validation
+and offline format conversion are now tested; see [transaction-wire.md](transaction-wire.md).
+Next verify the database path and integrate queries without enabling
 nonconsensus cluster writes. Do not enable SubmitTransaction in the five-node
 deployment until the replicated application path exists. Full Phase 1 validation
 and Phase 2 durability remain acceptance gates before Raft integration.

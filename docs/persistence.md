@@ -117,6 +117,13 @@ from genesis against persisted results/accounts, checking receipts' original log
 positions. Missing committed data, missing receipts, or inconsistent state fail
 closed rather than being silently reconstructed.
 
+The shared streaming `RecoveryAudit` checks log order, authenticates the pending
+suffix before replay, and compares every applied result with the stored receipt.
+A receipt claiming an earlier occurrence must identify that transaction in the
+original batch; it cannot suppress a transfer by pointing at an unrelated command.
+The audit retains no growing receipt table. A failed or finished audit is closed
+and cannot be reused to skip an error.
+
 Then replay only `(applied, commit]` using the same atomic application path. Before
 the application WriteBatch, the old state/marker remain; after it, new accounts,
 receipts, and marker survive together. `snapshot()` is a coherent query result,
@@ -127,6 +134,13 @@ three-second recovery target or throughput result is claimed. Checkpoints and
 replicated commitment belong to Phase 3.
 
 ## Test coverage and remaining limits
+
+Offline recovery tests enumerate every commit/application boundary in a three-batch
+history with within-batch duplicates, cross-batch retries, and rejected transfers.
+They check repeated recovery, corrupted state/results/positions, missing or reordered
+history, malformed pending transactions, and forged earlier receipts. These tests
+exercise the same audit/planner as the adapter using explicit state images; they
+do not simulate or prove RocksDB's atomicity or durability.
 
 The real RocksDB tests cover reopen/retries, concurrent duplicate callers, ordered
 batches, durable rejection, malformed-batch atomicity, poisoned handles, identity
@@ -139,6 +153,7 @@ after the atomic application write. This tests application recovery; it does not
 yet interrupt RocksDB's internal WAL recovery or emulate controller/power failure.
 
 All database/process tests remain unverified on this host. Phase 1 networking,
-protobuf field validation, cluster query integration, Raft, snapshots, Merkle state
+cluster query integration, Raft, snapshots, Merkle state
 commitments, and settlement also remain pending. The standalone command is never
 a nonconsensus write path in the five-node deployment.
+Protobuf field validation is independently tested; see [transaction-wire.md](transaction-wire.md).

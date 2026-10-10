@@ -104,4 +104,20 @@ TEST(DurableLedger, MissingReceiptOrInconsistentStateIsNotSilentlyRepaired) {
     EXPECT_THROW({ DurableLedger ledger(directory.path, genesis); }, std::runtime_error);
   }
 }
+TEST(DurableLedger, ForgedReceiptCannotSuppressPendingTransferOnRecovery) {
+  Directory directory; const auto genesis = ledger_genesis(); const auto pending = ledger_transaction();
+  {
+    DurableLedger ledger(directory.path, genesis);
+    EXPECT_EQ(ledger.submit(ledger_transaction(9)).result, TransferResult::wrong_nonce);
+  }
+  {
+    DurableLedger ledger(directory.path, genesis, [](LedgerCrashPoint point) {
+      if (point == LedgerCrashPoint::after_commit) throw std::runtime_error("leave pending transfer");
+    });
+    EXPECT_THROW(ledger.submit(pending), std::runtime_error);
+  }
+  corrupt(directory.path, receipt_key(pending.id),
+    encode_receipt({pending.id, 1, 0, TransferResult::applied}));
+  EXPECT_THROW({ DurableLedger ledger(directory.path, genesis); }, std::runtime_error);
+}
 } // namespace

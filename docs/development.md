@@ -49,6 +49,10 @@ discoverable, this reduced build also registers `config_gtests`. CTest
 
 ## Five real local processes
 
+For generated-protobuf transaction validation without storage or sockets, see
+[transaction-wire.md](transaction-wire.md). `-DROLLUPX_WIRE_ONLY=ON` builds the
+offline core, adapter, `rollupx-wire`, and their real protobuf tests.
+
 For the standalone transaction ledger tier (real RocksDB, no gRPC), see
 [persistence.md](persistence.md). Use `-DROLLUPX_LEDGER_ONLY=ON`; its CTest suite
 includes persistence/restart/crash tests and requires no listening sockets.

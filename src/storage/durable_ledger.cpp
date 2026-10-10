@@ -45,29 +45,16 @@ struct DurableLedger::Impl {
       // No compaction yet. Every committed command must still be available. Check
       // continuity before applying any pending entries; never repair missing history.
       const std::unique_ptr<rocksdb::Iterator> iterator(db->NewIterator(rocksdb::ReadOptions{}));
-      std::uint64_t seen = 0;
-      LedgerState audited{0, genesis.accounts};
+      RecoveryAudit audit(genesis, state, commit_index,
+        [this](const Hash& id) { return find_receipt(id); },
+        [this](std::uint64_t index) { return load_batch(index); });
       for (iterator->Seek("log/"); iterator->Valid() && iterator->key().starts_with("log/"); iterator->Next()) {
-        if (seen == std::numeric_limits<std::uint64_t>::max()) throw std::runtime_error("log index overflow");
         const auto index = decode_log_key(iterator->key().ToString());
-        if (index != ++seen || index > commit_index) throw std::runtime_error("noncontiguous committed history");
         const auto command = decode_batch(iterator->value().ToString());
-        if (command.index != index) throw std::runtime_error("log key/index mismatch");
-        if (index <= state.applied_index) {
-          const auto plan = plan_application(genesis, audited, commit_index, command, [&](const Hash& id) {
-            const auto prior = find_receipt(id);
-            return prior && prior->log_index <= audited.applied_index ? prior : std::nullopt;
-          });
-          for (const auto& expected : plan.results) {
-            const auto stored = find_receipt(expected.transaction_id);
-            if (!stored || *stored != expected) throw std::runtime_error("receipt differs from replayed history");
-          }
-          audited = plan.state;
-        }
+        audit.observe(index, command);
       }
       checked(iterator->status(), "scan ledger history");
-      if (seen != commit_index) throw std::runtime_error("committed log entry missing");
-      if (audited != state) throw std::runtime_error("stored state differs from committed history");
+      audit.finish();
       while (state.applied_index < commit_index) {
         const auto command = load_batch(state.applied_index+1);
         (void)apply(command); // Replays only the durable committed suffix.

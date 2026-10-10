@@ -2,7 +2,9 @@ syntax = "proto3";
 package rollupx.v1;
 
 // Canonical bytes and integer semantics are in docs/transaction-model.md.
-// Wire protobuf bytes are NOT the signature preimage. Execution is Phase 2.
+// Wire protobuf bytes are NOT the signature preimage. All redundant fields must
+// match the authenticated canonical payload. V1 rejects unknown fields and caps
+// serialized transaction messages at 512 bytes. Balance/nonce checks need state.
 message Transaction {
   bytes id = 1;                 // Exactly 32 bytes: Keccak-256(canonical_payload).
   bytes sender = 2;             // Exactly 20 bytes.

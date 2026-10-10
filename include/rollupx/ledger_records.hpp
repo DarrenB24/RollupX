@@ -53,6 +53,26 @@ struct ApplicationPlan {
   std::vector<LedgerReceipt> new_receipts; // Only first occurrences to write atomically.
 };
 using ReceiptLookup = std::function<std::optional<LedgerReceipt>(const Hash&)>;
+using BatchLookup = std::function<std::optional<LedgerBatch>(std::uint64_t)>;
 ApplicationPlan plan_application(const Genesis& genesis, const LedgerState& state,
   std::uint64_t commit_index, const LedgerBatch& batch, const ReceiptLookup& lookup);
+// Streaming startup audit. Feed every retained log entry in key order, then finish
+// before replaying any unapplied suffix. Holds constant state plus one batch plan.
+// Any failed observation invalidates this instance; callers must abandon recovery.
+class RecoveryAudit {
+ public:
+  RecoveryAudit(Genesis genesis, LedgerState stored, std::uint64_t commit_index,
+    ReceiptLookup receipts, BatchLookup batches);
+  void observe(std::uint64_t key_index, const LedgerBatch& batch);
+  void finish();
+ private:
+  Genesis genesis_;
+  LedgerState stored_;
+  LedgerState replayed_;
+  std::uint64_t commit_index_;
+  std::uint64_t seen_ = 0;
+  ReceiptLookup receipts_;
+  BatchLookup batches_;
+  bool closed_ = false;
+};
 } // namespace rollupx

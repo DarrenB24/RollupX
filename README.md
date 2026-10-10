@@ -27,6 +27,8 @@ Build, tests, and demo instructions are in [development.md](docs/development.md)
   transactions, deterministic in-memory transfer execution, and an offline wallet.
 * Standalone RocksDB ledger source with atomic state/receipts, startup audit/replay,
   a local query CLI, and real-database crash tests awaiting execution.
+* Tested protobuf transaction authentication, redundant-field validation, bounded
+  parsing, and an offline envelope/protobuf conversion CLI.
 
 The gRPC/RocksDB source and five-node deployment **have not run on the initial
 development host**: those dependencies are missing and socket binding is denied.
@@ -49,6 +51,8 @@ See [offline wallet and execution](docs/crypto-and-execution.md) for signing com
 test vectors, and the distinction between reference execution and durable commitment.
 The next build tier, `-DROLLUPX_LEDGER_ONLY=ON`, adds real RocksDB without gRPC.
 See [persistence and recovery](docs/persistence.md) for its protocol, CLI, and tests.
+With protobuf installed, `-DROLLUPX_WIRE_ONLY=ON` builds the tested transaction
+adapter and `rollupx-wire` without RocksDB/gRPC. See [wire validation](docs/transaction-wire.md).
 
 Install the native dependencies listed in [development.md](docs/development.md), then:
 
@@ -82,7 +86,8 @@ restart and peer reconnection, not committed-transaction recovery.
 ## Next milestones and limitations
 
 Phase 2's remaining gate is building and verifying the new RocksDB durability/query
-path against real crashes, then validating protobuf and network integration.
+path against real crashes, then connecting the tested protobuf adapter to the
+replicated ledger and verifying network integration.
 Phase 3 adds actual Raft and distributed failure recovery.
 Only after those correctness gates pass do batching benchmarks, Merkle proofs,
 Solidity fraud challenges, Anvil publication, and Kubernetes follow. No TPS or

@@ -59,11 +59,13 @@ core without enabling cluster writes or claiming either milestone fully accepted
 - [x] Deterministic reference execution with bounded ID deduplication and rejection results.
 - [x] Offline wallet account generation, signing, and verification.
 - [x] Persistence codecs, bounded application planner, recovery-state checks.
+- [x] Shared streaming startup audit and exhaustive small-history recovery-boundary tests.
 - [x] Standalone RocksDB ledger and query CLI source (not built against RocksDB yet).
 - [x] Real RocksDB reopen/concurrent-duplicate/corruption and SIGKILL test source.
 - [ ] RocksDB atomic batch execution, receipts, durable IDs, applied marker.
 - [ ] Retry semantics, concurrent duplicate admission, deterministic rejection.
-- [ ] Redundant protobuf field validation and durable query APIs/CLI.
+- [x] Generated-protobuf field validation and authenticated offline wire conversion.
+- [ ] Durable network query APIs and replicated transaction admission.
 - [ ] Process-kill hooks before/after storage effects and replay tests.
 
 Acceptance: valid transfers durable across restart, bad signature/nonce/chain,
@@ -201,3 +203,69 @@ Commit/push attempt for this continuation failed during `git add`:
 `Unable to create .git/index.lock: Operation not permitted`. The existing repository
 and origin can be read, but this agent still cannot update Git metadata. No new
 commit was created and no push ran. Source changes remain in the working tree.
+
+## Continuation: standalone ledger and recovery audit (2026-10-10)
+
+The user committed the standalone ledger source as `f8d30ab` (commit title
+`phase 3`). That title does not indicate completed Raft: Phase 3 remains pending.
+This baseline includes the standalone RocksDB adapter/CLI, synchronous log/commit
+and state/receipt WriteBatches, eight database tests, two process-kill tests, and
+eleven offline record/planner tests. Its 27 core GoogleTests passed normal and
+ASan/UBSan builds; actual database tests were not run.
+
+This continuation extracts the adapter's startup audit into shared `RecoveryAudit`
+code, adds eight offline tests, and adds a real-database regression for a forged
+receipt targeting a pending transfer. The audit checks contiguous authenticated
+history, receipt provenance, replayed results/accounts, and rejects reuse after
+completion or error. Boundary tests enumerate committed/applied prefixes and
+repeated restart images with duplicates and rejected transfers. These are logical
+recovery checks, not substituted database or process-crash tests.
+
+RocksDB-only configuration was retried and still fails because `RocksDBConfig.cmake`
+is absent. GitHub dependency download still fails DNS lookup. Real RocksDB linking,
+the nine database/two process-kill tests, and the ledger CLI smoke test remain
+unverified; the next acceptance gate is their execution in the documented ledger
+build environment. No networking, consensus, or performance milestone is promoted.
+
+Local verification for this continuation: all 35 core GoogleTests passed, with no
+skips, in both the normal Debug and ASan/UBSan builds. All three registered CTest
+entries passed in each build (configuration checks, core tests, wallet smoke).
+`git diff --check` passed. The new database regression is source-only until the
+RocksDB build can run.
+
+The requested commit/push was attempted again for these changes. `git add` failed:
+`Unable to create .git/index.lock: Operation not permitted`. Git metadata remains
+read-only in this environment; no commit was created and the chained push did not
+run. The changes remain in the working tree on top of `f8d30ab`.
+
+## Continuation: protobuf authentication boundary (2026-10-10)
+
+The previous recovery changes remain in the working tree. This continuation adds
+`rollupx_wire`: bounded raw protobuf parsing, exact binary field lengths, rejection
+of unknown fields, comparison of every redundant field with the signed payload,
+cryptographic authentication, and strict transaction-ID/account-address query keys.
+`rollupx-wire encode/decode` converts authenticated wallet envelopes and protobuf
+hex offline, without reporting submission or commitment.
+
+The cached protoc/protobuf 28.3 C++ installation was available, enabling real
+generated-message compilation without gRPC/RocksDB. `ROLLUPX_WIRE_ONLY` builds this
+tier; CMake message generation is separated from gRPC stub generation. Nine new
+GoogleTests exercise malformed/altered input, alternate legal protobuf encodings,
+integer bounds, and query keys. A subprocess test generates temporary wallet keys,
+round-trips signed data through the CLI, and rejects a conflicting unsigned amount.
+See docs/transaction-wire.md for policy and reproduction commands.
+
+Verification: Debug and ASan/UBSan wire builds both passed all five CTest entries:
+configuration, 35 core GoogleTests, wallet smoke, nine protobuf GoogleTests, and
+wire CLI smoke. No GoogleTests were skipped. Core-only and wire-only configurations
+still succeed; workflow YAML, shell syntax, and `git diff --check` pass. A dedicated
+CI matrix now builds this tier with/without sanitizers; remote CI has not run here.
+
+The validator is ready for future public admission integration, but cluster mutation
+APIs remain UNIMPLEMENTED. Real RocksDB durability/process-crash acceptance and
+five-node gRPC runtime verification remain blocked by missing dependencies/socket
+access. No Raft, state-root, settlement, or performance milestone is claimed.
+
+Commit/push was retried for the combined pending changes. Staging again failed with
+`.git/index.lock: Operation not permitted`; neither commit nor push ran. All source
+and documentation changes remain saved locally.
