@@ -5,6 +5,28 @@ on:
 permissions:
   contents: read
 jobs:
+  standalone-ledger:
+    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        sanitize: ["OFF", "ON"]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install real RocksDB and test dependencies
+        run: sudo apt-get update && sudo apt-get install -y cmake ninja-build librocksdb-dev libssl-dev libgtest-dev
+      - name: Build standalone ledger without gRPC
+        run: |
+          cmake -S . -B build-ledger -G Ninja -DROLLUPX_LEDGER_ONLY=ON -DCMAKE_BUILD_TYPE=Debug -DROLLUPX_SANITIZE=${{ matrix.sanitize }}
+          cmake --build build-ledger --parallel 2
+      - name: Run persistence, process crash/recovery, and standalone CLI tests
+        run: ctest --test-dir build-ledger --output-on-failure --output-junit ledger-results.xml
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ledger-results-sanitize-${{ matrix.sanitize }}
+          path: |
+            build-ledger/ledger-results.xml
+            build-ledger/Testing/Temporary/LastTest.log
   offline-core:
     runs-on: ubuntu-24.04
     strategy:

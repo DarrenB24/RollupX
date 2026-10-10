@@ -58,6 +58,9 @@ core without enabling cluster writes or claiming either milestone fully accepted
 - [x] In-memory immutable funded genesis registry, checked arithmetic and nonce rules.
 - [x] Deterministic reference execution with bounded ID deduplication and rejection results.
 - [x] Offline wallet account generation, signing, and verification.
+- [x] Persistence codecs, bounded application planner, recovery-state checks.
+- [x] Standalone RocksDB ledger and query CLI source (not built against RocksDB yet).
+- [x] Real RocksDB reopen/concurrent-duplicate/corruption and SIGKILL test source.
 - [ ] RocksDB atomic batch execution, receipts, durable IDs, applied marker.
 - [ ] Retry semantics, concurrent duplicate admission, deterministic rejection.
 - [ ] Redundant protobuf field validation and durable query APIs/CLI.

@@ -104,9 +104,10 @@ RocksDB WriteBatch covering accounts, receipts, batch data, and applied index.
 
 ## Remaining Phase 2 work
 
-Integrate this core into a durable RocksDB ledger; verify atomic crash/replay
-behavior with process-kill tests; validate redundant protobuf fields; add durable
-queries; and establish a controlled single-node development mode without enabling
+The RocksDB adapter, durable-query CLI, and explicit standalone development mode
+now exist as source; real-database builds and crash/replay tests remain blocked by
+missing RocksDB. See [persistence.md](persistence.md). Next verify that path,
+validate redundant protobuf fields, and integrate queries without enabling
 nonconsensus cluster writes. Do not enable SubmitTransaction in the five-node
 deployment until the replicated application path exists. Full Phase 1 validation
 and Phase 2 durability remain acceptance gates before Raft integration.

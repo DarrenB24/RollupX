@@ -49,6 +49,10 @@ discoverable, this reduced build also registers `config_gtests`. CTest
 
 ## Five real local processes
 
+For the standalone transaction ledger tier (real RocksDB, no gRPC), see
+[persistence.md](persistence.md). Use `-DROLLUPX_LEDGER_ONLY=ON`; its CTest suite
+includes persistence/restart/crash tests and requires no listening sockets.
+
 ```sh
 bash scripts/local-smoke.sh ./build/rollupx-node ./build/rollupx-cli
 ```

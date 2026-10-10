@@ -7,6 +7,10 @@ is tracked separately in IMPLEMENTATION_PLAN.md. The first milestone establishes
 real gRPC communication between five processes. It does not elect a pretend leader
 or return successful transaction responses before consensus exists.
 
+The current standalone ledger uses a development-only manifest and aggregate state
+record. Its implementation and verification status are in [persistence.md](persistence.md).
+The namespaces and Raft interfaces below remain the target cluster architecture.
+
 The initial ledger supports fixed-width unsigned integer value transfers on one
 chain, with genesis-funded accounts. There is no EVM, gas, dynamic membership,
 deposit bridge, withdrawal bridge, or economic security mechanism initially.
