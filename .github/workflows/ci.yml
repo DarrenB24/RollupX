@@ -39,7 +39,7 @@ jobs:
         run: |
           cmake -S . -B build-ledger -G Ninja -DROLLUPX_LEDGER_ONLY=ON -DCMAKE_BUILD_TYPE=Debug -DROLLUPX_SANITIZE=${{ matrix.sanitize }}
           cmake --build build-ledger --parallel 2
-      - name: Run persistence, process crash/recovery, and standalone CLI tests
+      - name: Run ledger/Raft persistence, process crash/recovery, and standalone CLI tests
         run: ctest --test-dir build-ledger --output-on-failure --output-junit ledger-results.xml
       - uses: actions/upload-artifact@v4
         if: always()
@@ -61,8 +61,8 @@ jobs:
         run: |
           cmake -S . -B build-core -G Ninja -DCMAKE_BUILD_TYPE=Debug -DROLLUPX_CORE_ONLY=ON -DROLLUPX_SANITIZE=${{ matrix.sanitize }}
           cmake --build build-core --parallel 2
-      - name: Verify crypto, deterministic execution, and offline wallet
-        run: ctest --test-dir build-core -R 'config_checks|core_tests|wallet_smoke' --output-on-failure
+      - name: Verify crypto, execution, Raft simulations, and offline wallet
+        run: ctest --test-dir build-core --output-on-failure
   build-and-test:
     runs-on: ubuntu-24.04
     strategy:

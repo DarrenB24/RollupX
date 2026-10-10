@@ -5,7 +5,7 @@ replicated transfer ledger with Ethereum settlement as its eventual destination.
 
 **Current milestone: verified offline transaction core; networking integration
 and durable execution pending.** This repository is not yet a working rollup.
-Raft consensus, durable ledger execution, settlement, and performance results are pending. See
+Networked Raft, verified durable ledger execution, settlement, and performance results are pending. See
 [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) for the implementation and
 verification record. Unavailable APIs fail explicitly.
 
@@ -29,6 +29,10 @@ Build, tests, and demo instructions are in [development.md](docs/development.md)
   a local query CLI, and real-database crash tests awaiting execution.
 * Tested protobuf transaction authentication, redundant-field validation, bounded
   parsing, and an offline envelope/protobuf conversion CLI.
+* Isolated Raft protocol core with persistence ordering, elections, log repair,
+  majority commitment, check-quorum, and deterministic five-node fault simulations.
+* Tested identity-bound Raft records and persistence transition guards; RocksDB
+  Raft store and process-kill test source awaiting real-database verification.
 
 The gRPC/RocksDB source and five-node deployment **have not run on the initial
 development host**: those dependencies are missing and socket binding is denied.
@@ -49,8 +53,11 @@ ctest --test-dir build-core --output-on-failure
 
 See [offline wallet and execution](docs/crypto-and-execution.md) for signing commands,
 test vectors, and the distinction between reference execution and durable commitment.
+The core build also runs [Raft simulation tests](docs/raft-core.md); these do not
+replace real-database or five-process consensus tests.
 The next build tier, `-DROLLUPX_LEDGER_ONLY=ON`, adds real RocksDB without gRPC.
 See [persistence and recovery](docs/persistence.md) for its protocol, CLI, and tests.
+That build also includes the [Raft persistence suite](docs/raft-persistence.md).
 With protobuf installed, `-DROLLUPX_WIRE_ONLY=ON` builds the tested transaction
 adapter and `rollupx-wire` without RocksDB/gRPC. See [wire validation](docs/transaction-wire.md).
 
@@ -88,7 +95,8 @@ restart and peer reconnection, not committed-transaction recovery.
 Phase 2's remaining gate is building and verifying the new RocksDB durability/query
 path against real crashes, then connecting the tested protobuf adapter to the
 replicated ledger and verifying network integration.
-Phase 3 adds actual Raft and distributed failure recovery.
+Phase 3 connects the tested Raft core to persistent storage, gRPC, and durable
+application, then verifies distributed failure recovery with real processes.
 Only after those correctness gates pass do batching benchmarks, Merkle proofs,
 Solidity fraud challenges, Anvil publication, and Kubernetes follow. No TPS or
 latency result exists yet. Foundry tests and the load generator are not implemented.

@@ -75,7 +75,14 @@ enable non-consensus writes in cluster mode.
 
 ## Phase 3 — consensus (depends on Phase 2)
 
-- [ ] Deterministic Raft core/clock/transport effect interfaces and simulation tests.
+The isolated protocol core can be tested while earlier runtime gates are blocked.
+Cluster integration and phase acceptance still depend on verified durable execution.
+
+- [x] Deterministic Raft core/clock/transport effect interfaces and simulation tests.
+- [x] Protocol-level elections, log repair, majority rule, no-op barrier and check-quorum.
+- [x] Five-node simulated faults and independent committed signed-transfer execution.
+- [x] Versioned identity-bound Raft records and shared persistence transition validation.
+- [x] RocksDB Raft store and real-database/SIGKILL test source (runtime gate blocked).
 - [ ] Election/vote persistence, randomized timeouts, term handling and heartbeats.
 - [ ] Durable append/conflict repair, per-peer progress, current-term commit rule.
 - [ ] Ordered committed application, leader hints, check-quorum, no-op barrier.
@@ -269,3 +276,90 @@ access. No Raft, state-root, settlement, or performance milestone is claimed.
 Commit/push was retried for the combined pending changes. Staging again failed with
 `.git/index.lock: Operation not permitted`; neither commit nor push ran. All source
 and documentation changes remain saved locally.
+
+## Continuation: isolated Raft protocol core (2026-10-10)
+
+The previous changes are now committed by the user as `8b86cdd` (`phase 3.5`).
+The tree was clean at the start of this continuation. gRPC/RocksDB are still absent,
+and a fresh GitHub request still fails DNS resolution. Work therefore advances
+the independently testable protocol core, without bypassing the durable-ledger
+acceptance gate or enabling cluster writes.
+
+Added a single-owner C++ Raft core with injected monotonic time and reproducible
+randomized elections, persistent self/granted votes, term handling, per-peer log
+progress, conflict repair, current-term majority commitment, a leadership no-op,
+and recent-quorum proposal gating/step-down. Persistence is an explicit synchronous
+callback; dependent messages are returned only after it succeeds. Storage failures
+and allocation failures stop the core. Commands, logs, and per-peer in-flight
+requests are bounded. No snapshots, real Raft store, gRPC driver, or durable
+application bridge are implemented in this slice. See docs/raft-core.md.
+
+Added 21 GoogleTests, including five-node scenarios with two crashed nodes, leader
+restart, 2/3 partitions, divergent suffixes, split votes, and 20 seeded schedules
+with loss, duplication, delay/reordering, and independent clock offsets. Every
+delivered event checks same-term leader uniqueness and committed-prefix consistency.
+A separate scenario independently executes real signed transfers from committed
+logs and verifies that a retry after leadership change has only one balance/nonce
+effect. Simulated memory recorders do not demonstrate disk crash durability.
+
+The first test run caught an overly strict test assertion: after losing quorum,
+an isolated former leader may time out as a follower and become a candidate again.
+The requirement is that it cannot regain leadership or commit without quorum;
+the corrected assertion and explicit quorum-step-down tests both pass.
+
+Final verification: all four core-tier CTest entries pass in Debug and ASan/UBSan,
+including 35 existing core cases, 21 Raft cases, configuration checks, and wallet
+smoke. No tests were skipped or sanitizer failures reported. Workflow YAML and
+`git diff --check` pass. CI now includes the Raft test target in its offline tier.
+No real-time recovery target, throughput result, network consensus, or durable
+replicated-ledger milestone is claimed.
+
+Next: verify the real RocksDB ledger suite; implement a versioned Raft store and
+crash-test its persistence callback; map core messages to gRPC with request-term/RPC
+correlation; bridge committed transfer/no-op entries to atomic applied markers;
+then run five real processes before snapshot/compaction and performance work.
+
+The requested commit/push was attempted for this continuation. `git add` failed
+with `.git/index.lock: Operation not permitted`. No new commit was created and
+push did not run; all changes remain in the working tree above `8b86cdd`.
+
+## Continuation: versioned Raft persistence (2026-10-10)
+
+The preceding Raft core changes are still uncommitted in the working tree. Added
+identity-bound manifest/state records, explicit big-endian encodings with Keccak
+checksums, bounded decoding, and shared recovered-state validation. The persistence
+guard rejects backward term/commit movement, changing a same-term vote, replacing
+committed entries, and unsupported suffix deletion. It permits legal higher terms
+and uncommitted conflict replacement. Every simulated persistence effect now passes
+this guard and the actual encode/decode boundary.
+
+Added `raft::Store`, a distinct RocksDB directory format implementing the core's
+synchronous persistence callback. It writes term/vote/log/commit in one synchronous
+WAL WriteBatch, checks staging/write errors, publishes cached state after success,
+and requires reopen after ambiguous failures. Exact identity and exclusive ownership
+are enforced. It does not yet store ledger effects or applied markers.
+
+Added nine offline record tests, six real-database tests, and a process test with ten
+SIGKILL cases: before/after term, vote, append, commit, and suffix replacement. The
+process harness reopens twice and checks complete images and vote retention. Its
+deadline bounds worker termination; a missed kill hook fails. These tests are wired
+into the existing standalone-ledger CI matrix, not registered as passing placeholders.
+
+Local verification: all 65 GoogleTests passed (35 execution/crypto/recovery + 30
+Raft/record cases) in Debug and ASan/UBSan. All four core-tier CTest entries passed,
+including configuration and wallet smoke, with no skipped tests or sanitizer reports.
+The new process worker and parent harness passed syntax-only compilation. Workflow
+YAML and `git diff --check` passed. RocksDB-only configuration was retried and failed
+at `find_package(RocksDB)`: no `RocksDBConfig.cmake`. The actual adapter/database
+tests have not compiled or run; neither process-kill durability nor network consensus
+is claimed. See docs/raft-persistence.md for record layout and commands.
+
+Next acceptance gate: execute both real RocksDB storage suites. Then bridge committed
+Raft commands/no-ops to durable account/receipt/applied-index updates and connect the
+core's correlated messages to gRPC. Snapshots/compaction, root commitments, settlement,
+and benchmarks remain pending. Full-image persistence is intentionally bounded and
+has no throughput claim.
+
+Commit/push was attempted for the combined pending consensus/persistence work.
+Staging failed with `.git/index.lock: Operation not permitted`; no commit or push
+ran. Source and documentation changes remain saved locally above `8b86cdd`.

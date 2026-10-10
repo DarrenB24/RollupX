@@ -10,6 +10,9 @@ or return successful transaction responses before consensus exists.
 The current standalone ledger uses a development-only manifest and aggregate state
 record. Its implementation and verification status are in [persistence.md](persistence.md).
 The namespaces and Raft interfaces below remain the target cluster architecture.
+An isolated [Raft core](raft-core.md) now tests protocol decisions and signed
+command ordering in simulation. Its persistent store, network driver, and durable
+application bridge are not integrated with the running node.
 
 The initial ledger supports fixed-width unsigned integer value transfers on one
 chain, with genesis-funded accounts. There is no EVM, gas, dynamic membership,

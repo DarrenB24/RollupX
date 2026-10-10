@@ -1,7 +1,11 @@
 # Raft protocol and recovery plan
 
-Raft is not implemented in Phase 1. Probe messages are connectivity checks, not
-AppendEntries heartbeats or votes. Protocol fields below reserve the actual RPCs.
+The isolated C++ Raft core and deterministic five-node simulations are implemented;
+see [raft-core.md](raft-core.md) for tested behavior and limits. The deployed node
+still has no Raft integration. Probe messages are connectivity checks, not
+AppendEntries heartbeats or votes. The gRPC Raft methods remain UNIMPLEMENTED.
+The versioned [Raft persistence format and store](raft-persistence.md) are now
+implemented; actual RocksDB durability verification is still pending.
 
 Membership is static and odd, default five; quorum is floor(N/2)+1. One mutex/event
 loop owns protocol state. Timers use a monotonic injectable clock and seeded RNG
