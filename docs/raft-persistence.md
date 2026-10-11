@@ -30,6 +30,9 @@ both the networking-only node identity and standalone transfer-ledger formats.
 Opening a different identity, a nonempty database with no manifest, or a database
 with no required state record fails. `existing_only` never creates a database.
 Initial creation atomically writes the manifest and empty state with WAL/sync.
+The optional ledger mode also initializes genesis/accounts/applied progress in
+that same write; see [committed application](raft-application.md). Opening with a
+different mode fails instead of silently upgrading an existing database.
 
 `meta/identity` contains the following concatenation:
 
@@ -123,6 +126,7 @@ candidate. Workers have explicit termination deadlines and missed hooks fail.
 These real storage tests remain unverified. They test process interruption around
 synchronous writes, not power loss or interruption inside RocksDB's WAL recovery.
 Initialization crash points, checkpoints, snapshots, and compaction are pending.
-The store does not contain accounts, receipts, or applied progress yet. Next verify
-real storage, then implement the application bridge (including no-op markers) and
-gRPC driver before claiming durable replicated transfers.
+The ledger-enabled store now includes accounts, receipts, applied progress, startup
+audit/replay, and separate database/application-kill tests as described in
+[committed application](raft-application.md). Next verify real storage and connect
+the gRPC driver before claiming durable replicated transfers.

@@ -29,7 +29,9 @@ TEST(ReplicatedLedger, ReopenReplaysCommittedSuffixButNeverUncommittedEntries) {
   }
   Store recovered(directory.path,raft_ledger_manifest(),ledger_genesis());
   EXPECT_EQ(recovered.ledger_state().applied_index,4U); EXPECT_EQ(recovered.ledger_state().accounts[0].balance,70U);
-  EXPECT_EQ(recovered.receipt(ledger_transaction(1,1000).id)->result,TransferResult::insufficient_balance);
+  const auto rejected = recovered.receipt(ledger_transaction(1,1000).id);
+  ASSERT_TRUE(rejected);
+  EXPECT_EQ(rejected->result,TransferResult::insufficient_balance);
 }
 TEST(ReplicatedLedger, ApplicationFailurePoisonsHandleAndReopenResolvesOutcome) {
   for (const auto point : {StoreCrashPoint::before_apply,StoreCrashPoint::after_apply}) {
@@ -39,7 +41,8 @@ TEST(ReplicatedLedger, ApplicationFailurePoisonsHandleAndReopenResolvesOutcome) 
         if (current == point) throw std::runtime_error("application interrupted");
       });
       store.persist(raft_ledger_history()); EXPECT_THROW(store.apply_committed(),std::runtime_error);
-      EXPECT_THROW(store.ledger_state(),std::runtime_error); EXPECT_THROW(store.receipt(ledger_transaction().id),std::runtime_error);
+      EXPECT_THROW(store.ledger_state(),std::runtime_error);
+      EXPECT_THROW(store.receipt(ledger_transaction().id),std::runtime_error);
     }
     Store recovered(directory.path,raft_ledger_manifest(),ledger_genesis());
     EXPECT_EQ(recovered.ledger_state().applied_index,4U); EXPECT_EQ(recovered.ledger_state().accounts[0].balance,70U);

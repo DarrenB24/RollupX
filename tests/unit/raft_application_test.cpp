@@ -1,6 +1,7 @@
 #include "rollupx/raft_application.hpp"
 #include "../ledger_fixture.hpp"
 #include "../raft_store_fixture.hpp"
+#include <algorithm>
 #include <gtest/gtest.h>
 
 namespace {
@@ -46,6 +47,42 @@ TEST_F(Application, NoopsAdvanceProgressAndRetriesKeepOriginalPosition) {
   EXPECT_EQ(applied.accounts[0].nonce,2U); ASSERT_EQ(receipts.size(),2U);
   EXPECT_EQ(receipts.at(first.id).log_index,2U); EXPECT_EQ(receipts.at(first.id).transaction_offset,0U);
   EXPECT_NO_THROW(audit_raft_application(genesis,applied,consensus,lookup));
+}
+TEST_F(Application, ValidChecksumDoesNotAuthorizeMalformedCommandsOrSignatures) {
+  const auto original = encode_transfer_command({ledger_transaction()});
+  const auto checksum = [](std::string command) {
+    const auto digest = keccak256({reinterpret_cast<const Byte*>(command.data()),command.size()-32});
+    std::copy(digest.begin(),digest.end(),command.end()-32);
+    return command;
+  };
+  for (const std::uint32_t count : {0U,2U,1001U,0xffffffffU}) {
+    auto command = original;
+    for (unsigned i = 0; i < 4; ++i) command[4+i] = static_cast<char>(count >> (24-8*i));
+    EXPECT_THROW(decode_transfer_command(checksum(command)),std::invalid_argument);
+  }
+  // Mutate the envelope ID, signed payload, signature scalar, and recovery ID.
+  for (const auto offset : {8U,40U,117U,181U}) {
+    auto command = original; command[offset] ^= 4;
+    EXPECT_THROW(decode_transfer_command(checksum(command)),std::invalid_argument);
+  }
+}
+TEST_F(Application, AuditRejectsRepointingReceiptToALaterDuplicate) {
+  const auto transaction = ledger_transaction();
+  append({transaction,transaction}); append({transaction}); apply_next(); apply_next();
+  receipts.at(transaction.id).transaction_offset = 1;
+  EXPECT_THROW(audit_raft_application(genesis,applied,consensus,lookup),std::runtime_error);
+  receipts.at(transaction.id).transaction_offset = 0;
+  receipts.at(transaction.id).log_index = 2;
+  EXPECT_THROW(audit_raft_application(genesis,applied,consensus,lookup),std::runtime_error);
+}
+TEST_F(Application, AuditRejectsForgedSuccessAndRejectionResults) {
+  const auto valid = ledger_transaction(); const auto rejected = ledger_transaction(1,1000);
+  append({valid,rejected}); apply_next();
+  receipts.at(rejected.id).result = TransferResult::applied;
+  EXPECT_THROW(audit_raft_application(genesis,applied,consensus,lookup),std::runtime_error);
+  receipts.at(rejected.id).result = TransferResult::insufficient_balance;
+  receipts.at(valid.id).result = TransferResult::insufficient_balance;
+  EXPECT_THROW(audit_raft_application(genesis,applied,consensus,lookup),std::runtime_error);
 }
 TEST_F(Application, EveryAppliedBoundaryReplaysCommittedSuffixExactlyOnce) {
   const auto first = ledger_transaction(); append(); append({first}); append();

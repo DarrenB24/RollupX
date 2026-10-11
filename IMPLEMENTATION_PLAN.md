@@ -83,6 +83,10 @@ Cluster integration and phase acceptance still depend on verified durable execut
 - [x] Five-node simulated faults and independent committed signed-transfer execution.
 - [x] Versioned identity-bound Raft records and shared persistence transition validation.
 - [x] RocksDB Raft store and real-database/SIGKILL test source (runtime gate blocked).
+- [x] Authenticated Raft transfer commands, ordered application planner, no-op progress,
+      first-receipt audit, and independent simulated replica application.
+- [x] Atomic RocksDB application/replay and database/process-kill test source
+      (real storage compilation and execution still blocked).
 - [ ] Election/vote persistence, randomized timeouts, term handling and heartbeats.
 - [ ] Durable append/conflict repair, per-peer progress, current-term commit rule.
 - [ ] Ordered committed application, leader hints, check-quorum, no-op barrier.
@@ -363,3 +367,47 @@ has no throughput claim.
 Commit/push was attempted for the combined pending consensus/persistence work.
 Staging failed with `.git/index.lock: Operation not permitted`; no commit or push
 ran. Source and documentation changes remain saved locally above `8b86cdd`.
+
+## Continuation: committed Raft application (2026-10-11)
+
+The user committed the preceding work, including the initial application bridge,
+as `96a5bd6` (`phase 4`). That commit title is not phase acceptance: networked
+consensus, real storage verification, and performance work remain pending.
+
+The bridge introduces index-independent `RXC1` authenticated transfer commands,
+sequential committed-entry planning, no-op applied markers, and a streaming replay
+audit. Receipts retain their first log/transaction position across retries. Genesis
+is bound to the Raft manifest. Ledger-enabled `raft::Store` persists accounts,
+receipts, and progress atomically, audits startup state, and applies only the
+remaining committed suffix. Core-only directories cannot be silently upgraded.
+The five-node signed-transfer simulation now uses this shared planner/audit.
+
+Verification in this continuation found and fixed duplicate GoogleTest exception
+macro labels in two database test files, and guarded an optional receipt before
+dereference. Added three further offline adversarial tests: malformed commands and
+signatures with recomputed checksums, receipts moved to later duplicate positions,
+and forged success/rejection results. The command/application suite now has eleven
+tests. See docs/raft-application.md for encoding, recovery, and integration rules.
+
+Local verification: all four core-tier CTest entries passed in Debug and ASan/UBSan,
+including 76 GoogleTests (35 core and 41 Raft/record/application), configuration
+checks, and wallet smoke. No skipped tests or sanitizer reports. The application
+crash worker, process-test harness, and replicated-ledger integration test source
+passed strict syntax-only compilation; this does not establish linking or storage
+behavior. The RocksDB adapter and RocksDB-header-dependent tests remain uncompiled.
+
+The ledger-only CMake configure was retried and still fails at
+`find_package(RocksDB)`: `RocksDBConfig.cmake` is missing. Six application database
+tests and two application SIGKILL tests are wired into the ledger/full CI builds
+alongside the existing storage suites, but have not run here. Remote CI results
+have not been observed. No disk-crash durability, network commitment, performance,
+state-root, or settlement milestone is claimed.
+
+Next: execute the real ledger/Raft storage suites, then connect correlated Raft
+messages and a bounded single-owner event loop to gRPC. Run five-process transfer,
+crash/restart, and partition tests before snapshot/compaction and performance work.
+
+The requested commit/push was attempted for this continuation. Staging failed with
+`.git/index.lock: Operation not permitted`; Git metadata is read-only in this
+workspace. Neither commit nor push ran. Changes remain saved locally above
+`96a5bd6`. `git diff --check` passed.

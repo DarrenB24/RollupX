@@ -33,6 +33,8 @@ Build, tests, and demo instructions are in [development.md](docs/development.md)
   majority commitment, check-quorum, and deterministic five-node fault simulations.
 * Tested identity-bound Raft records and persistence transition guards; RocksDB
   Raft store and process-kill test source awaiting real-database verification.
+* Tested committed-entry application and recovery audit, including no-op progress
+  and idempotent receipts; atomic RocksDB application/replay source and crash tests.
 
 The gRPC/RocksDB source and five-node deployment **have not run on the initial
 development host**: those dependencies are missing and socket binding is denied.
@@ -58,6 +60,8 @@ replace real-database or five-process consensus tests.
 The next build tier, `-DROLLUPX_LEDGER_ONLY=ON`, adds real RocksDB without gRPC.
 See [persistence and recovery](docs/persistence.md) for its protocol, CLI, and tests.
 That build also includes the [Raft persistence suite](docs/raft-persistence.md).
+See [committed application](docs/raft-application.md) for command encoding,
+commit/application boundaries, recovery, and verification status.
 With protobuf installed, `-DROLLUPX_WIRE_ONLY=ON` builds the tested transaction
 adapter and `rollupx-wire` without RocksDB/gRPC. See [wire validation](docs/transaction-wire.md).
 

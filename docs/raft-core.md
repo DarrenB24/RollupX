@@ -44,7 +44,8 @@ Term/vote changes precede vote requests/replies. Local entries precede replicati
 follower appends and commit progress precede success replies. Leader commitment
 precedes outgoing commit announcements. Recovered state validates vote membership,
 term ordering, index bounds, and capacity, but storage checksums and cluster/genesis
-identity must be verified by the future persistent adapter.
+identity are verified by the implemented persistent adapter, whose real-database
+acceptance tests remain pending.
 
 ## Protocol behavior
 
@@ -93,9 +94,10 @@ IO require their own durable completion protocol before changing this boundary.
 There is no ReadIndex, lease read, membership change, pre-vote, or leader transfer.
 One outstanding request favors bounded state over pipelined replication throughput.
 
-Commit index is not application progress or a client confirmation. The future
-application adapter must atomically advance its applied marker for both no-ops and
-transfer batches, preserving durable receipts and at-most-once execution. The
+Commit index is not application progress or a client confirmation. The implemented
+[application adapter](raft-application.md) advances its applied marker for both
+no-ops and transfer batches, with atomic receipt/state writes awaiting real-database
+verification. The
 standalone ledger format cannot simply be reused as a Raft store: it assumes every
 locally committed entry is a transfer batch and has no term/vote protocol.
 
@@ -119,12 +121,13 @@ term and consistency of all committed prefixes, including crashed nodes' history
 
 A signed-transfer scenario sends real canonical envelopes through the simulated
 log, changes leaders, retries a transfer, and independently executes each replica's
-committed prefix using the reference engine. Balances/nonces agree and the retry
+committed prefix using the shared application planner and recovery audit, including
+no-op progress. Balances/nonces agree and the retry
 does not execute twice. This remains a memory-backed protocol/execution test.
 
 The next integration steps are real RocksDB validation of the implemented Raft
 store and persistence callback, gRPC request/reply adapters, bounded owner queues,
-and durable ordered application with no-op markers. Then run five real processes
+and verification of durable ordered application with no-op markers. Then run five real processes
 through the same fault scenarios. Snapshot installation/compaction follows with
 its own interrupted-publication tests. Simulation time and test runtime are not
 benchmark results, and memory recorders do not demonstrate fsync or WAL durability.

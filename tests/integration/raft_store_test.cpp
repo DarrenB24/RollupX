@@ -51,7 +51,8 @@ TEST(RaftStore, AmbiguousFailuresRequireReopenAndReturnOnlyCompleteImages) {
         if (point == current) throw std::runtime_error("injected interruption");
       });
       EXPECT_THROW(store.persist(next),std::runtime_error);
-      EXPECT_THROW(store.load(),std::runtime_error); EXPECT_THROW(store.persist(next),std::runtime_error);
+      EXPECT_THROW(store.load(),std::runtime_error);
+      EXPECT_THROW(store.persist(next),std::runtime_error);
     }
     Store recovered(directory.path,raft_manifest());
     EXPECT_EQ(recovered.load(),point == StoreCrashPoint::after_write ? next : State{});
