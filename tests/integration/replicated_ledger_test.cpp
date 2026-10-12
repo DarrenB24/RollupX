@@ -1,5 +1,6 @@
 #include "../test_support.hpp"
 #include "../raft_store_fixture.hpp"
+#include "rollupx/raft_runtime.hpp"
 #include <gtest/gtest.h>
 
 namespace {
@@ -72,5 +73,43 @@ TEST(ReplicatedLedger, MalformedCommandDoesNotEnterRaftDatabase) {
   EXPECT_THROW(store.persist(bad),std::invalid_argument);
   EXPECT_EQ(store.load(),State{}); EXPECT_EQ(store.ledger_state().applied_index,0U);
   EXPECT_NO_THROW(store.persist(raft_ledger_history()));
+}
+TEST(ReplicatedLedger, NamedMembershipSurvivesReplayAndCannotBeRenamedOrDowngraded) {
+  Directory directory; auto identity = raft_ledger_manifest();
+  identity.member_names = {"n1","n2","n3","n4","n5"};
+  { Store store(directory.path,identity,ledger_genesis()); store.persist(raft_ledger_history()); }
+  auto renamed = identity; renamed.member_names[1] = "n2-renamed";
+  EXPECT_THROW({ Store wrong(directory.path,renamed,ledger_genesis()); },std::runtime_error);
+  EXPECT_THROW({ Store legacy(directory.path,raft_ledger_manifest(),ledger_genesis()); },std::runtime_error);
+  Store recovered(directory.path,identity,ledger_genesis());
+  EXPECT_EQ(recovered.apply_committed(),4U); EXPECT_EQ(recovered.ledger_state().accounts[0].balance,70U);
+}
+TEST(ReplicatedLedger, ExistingNumericOnlyStoreCannotBeUpgradedBySupplyingNames) {
+  Directory directory; const auto identity = raft_ledger_manifest();
+  { Store legacy(directory.path,identity,ledger_genesis()); legacy.persist(raft_ledger_history()); }
+  auto named = identity; named.member_names = {"n1","n2","n3","n4","n5"};
+  EXPECT_THROW({ Store wrong(directory.path,named,ledger_genesis()); },std::runtime_error);
+  Store unchanged(directory.path,identity,ledger_genesis());
+  EXPECT_EQ(unchanged.apply_committed(),4U); EXPECT_EQ(unchanged.ledger_state().accounts[0].balance,70U);
+}
+TEST(ReplicatedLedger, RuntimePublishesReplyOnlyAfterStoreApplicationAndSurvivesReopen) {
+  Directory directory;
+  const auto identity = make_named_manifest("test-cluster",{"n1","n2","n3","n4","n5"},
+    raft_ledger_manifest().genesis_digest,1);
+  const auto history = raft_ledger_history();
+  for (int restart = 0; restart < 2; ++restart) {
+    Store store(directory.path,identity,ledger_genesis());
+    Runtime runtime(raft_config(),store.load(),[&](const State& state) { store.persist(state); },
+      [&](Index) { return store.apply_committed(); },[](const Envelope&) { return true; },
+      {32,1024*1024,false,std::chrono::milliseconds(10)});
+    auto request = runtime.handle().receive({2,1,AppendRequest{1,1,0,0,history.log,history.commit}});
+    ASSERT_EQ(request.admission,Admission::queued);
+    ASSERT_EQ(request.result.wait_for(std::chrono::seconds(3)),std::future_status::ready);
+    const auto result = request.result.get(); ASSERT_TRUE(result.reply);
+    EXPECT_EQ(result.completion,Completion::processed); EXPECT_EQ(result.status.applied,4U);
+    EXPECT_TRUE(std::get<AppendResponse>(result.reply->message).success);
+    EXPECT_EQ(store.ledger_state().accounts[0].balance,70U); EXPECT_EQ(store.ledger_state().accounts[0].nonce,2U);
+    runtime.stop();
+  }
 }
 } // namespace

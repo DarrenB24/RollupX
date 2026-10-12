@@ -149,7 +149,7 @@ std::vector<Envelope> Core::tick(Millis now) try {
 std::vector<Envelope> Core::propose(std::string command, Millis now) try {
   check_time(now);
   if (role_ != Role::leader || !quorum_recent() || state_.commit == 0 || term_at(state_.commit) != state_.term)
-    throw std::runtime_error("leader with a committed current-term barrier and recent quorum required");
+    throw ProposalRejected("leader with a committed current-term barrier and recent quorum required");
   if (command.empty() || command.size() > kMaxCommandBytes) throw std::invalid_argument("invalid Raft command size");
   auto next = state_; next.log.push_back({state_.term, std::move(command)}); save(std::move(next));
   std::vector<Envelope> out; broadcast(out); return out;

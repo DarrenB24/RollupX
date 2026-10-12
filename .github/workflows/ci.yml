@@ -5,6 +5,24 @@ on:
 permissions:
   contents: read
 jobs:
+  runtime-tsan:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install runtime race-test dependencies
+        run: sudo apt-get update && sudo apt-get install -y clang cmake ninja-build libssl-dev libgtest-dev
+      - name: Build and test owner-thread runtime with ThreadSanitizer
+        run: |
+          cmake -S . -B build-tsan -G Ninja -DCMAKE_CXX_COMPILER=clang++ -DROLLUPX_CORE_ONLY=ON -DROLLUPX_TSAN=ON -DCMAKE_BUILD_TYPE=Debug
+          cmake --build build-tsan --target runtime_tests --parallel 2
+          ctest --test-dir build-tsan -R '^runtime_tests$' --output-on-failure --output-junit runtime-results.xml
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: runtime-tsan-results
+          path: |
+            build-tsan/runtime-results.xml
+            build-tsan/Testing/Temporary/LastTest.log
   protobuf-wire:
     runs-on: ubuntu-24.04
     strategy:

@@ -31,9 +31,12 @@ unset/zero and role stays ROLE_UNSPECIFIED in this milestone.
   and another member's claimed sender ID. Wrong version/cluster/topology returns
   FAILED_PRECONDITION, unknown/self sender returns PERMISSION_DENIED, startup or
   shutdown returns UNAVAILABLE. This is not authenticated transport.
-* `Raft.RequestVote`, `Raft.AppendEntries`, and `Raft.InstallSnapshot`: planned
-  schemas, all UNIMPLEMENTED. Persist-before-reply behavior is specified in
-  ../docs/consensus.md and must be implemented/tested before enabling them.
+* `Raft.RequestVote` and `Raft.AppendEntries`: tested generated-Protobuf codec with
+  mandatory configuration/route/request context; RPC handlers still UNIMPLEMENTED.
+  See [Raft wire boundary](../docs/raft-wire.md) for limits and correlation rules.
+* `Raft.InstallSnapshot`: planned schema, UNIMPLEMENTED. Persist-before-reply
+  behavior is specified in ../docs/consensus.md and must be verified before
+  enabling network consensus.
 
 Only the public service is registered on the public listener. Unknown methods or
 services return UNIMPLEMENTED. Servers cap sent/received messages at 1 MiB and apply

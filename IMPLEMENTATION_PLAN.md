@@ -87,6 +87,13 @@ Cluster integration and phase acceptance still depend on verified durable execut
       first-receipt audit, and independent simulated replica application.
 - [x] Atomic RocksDB application/replay and database/process-kill test source
       (real storage compilation and execution still blocked).
+- [x] Bounded generated-Protobuf Raft codec, configuration/route checks, original
+      request correlation, and serialized five-node application/fault simulations.
+- [x] Versioned named membership mapping bound to Raft records and wire identity;
+      real-database reopen tests implemented, awaiting execution.
+- [x] Bounded single-owner runtime, automatic ticks, cancellation, weak callback
+      handles, fail-stop behavior, shutdown/join, and concurrent producer tests.
+- [ ] gRPC service/client driver and public ledger integration with the runtime.
 - [ ] Election/vote persistence, randomized timeouts, term handling and heartbeats.
 - [ ] Durable append/conflict repair, per-peer progress, current-term commit rule.
 - [ ] Ordered committed application, leader hints, check-quorum, no-op barrier.
@@ -411,3 +418,138 @@ The requested commit/push was attempted for this continuation. Staging failed wi
 `.git/index.lock: Operation not permitted`; Git metadata is read-only in this
 workspace. Neither commit nor push ran. Changes remain saved locally above
 `96a5bd6`. `git diff --check` passed.
+
+## Continuation: Raft Protobuf integration boundary (2026-10-11)
+
+The preceding application verification changes were committed by the user as
+`e21d2de` (`phase 4.1`), and this continuation started from a clean tree. A fresh
+ledger-only configure still fails because RocksDB is absent; inspection also found
+no usable gRPC installation. The existing Protobuf/protoc installation remains
+available, so this step implements and verifies the transport-independent message
+boundary without enabling unverified network writes.
+
+Added `rollupx_raft_wire` and mandatory `RaftContext` fields for vote/append requests
+and replies. The codec binds cluster, sorted named membership, and genesis through
+a domain-separated configuration digest. It verifies sender/recipient direction,
+request term and append sequence against the retained original call, bounds raw
+and decoded messages, rejects unknown fields at each nesting level, and validates
+contiguous log positions, terms, counts, payload size, and response hints. Higher
+term rejection remains legal; a newer-term response cannot grant an old vote or
+claim successful replication for an old append. Snapshot transport remains absent.
+
+Added thirteen GoogleTests: eleven codec/validation cases and two deterministic
+five-node serialized-message scenarios. Every simulated link uses actual generated
+Protobuf serialization/parsing. The scenarios replicate and apply signed transfers,
+restart a leader, retry idempotently, partition a leader with one follower, reject
+minority commitment, repair the divergent suffix, and compare final balances,
+nonces, and receipts. Every delivered event checks committed-prefix consistency.
+Their persistence is explicitly memory-backed; these are not process/socket tests.
+
+Verification: Debug and ASan/UBSan wire builds both passed all seven CTest entries,
+including 98 GoogleTests (35 core, 41 Raft/application, nine transaction-wire, and
+thirteen Raft-wire), configuration checks, wallet smoke, and wire CLI smoke. No
+skips or sanitizer failures were reported. The first compile caught an incorrect
+test-fixture call; it was corrected before the passing builds. `git diff --check`
+passes. Existing protobuf/full CI jobs include the new target automatically; no
+remote CI result has been observed. See docs/raft-wire.md for the full contract.
+
+Next gates: execute real RocksDB storage suites; persist/verify the named-to-numeric
+member mapping (the current numeric Raft manifest alone does not bind names); add
+a bounded single-owner runtime with gRPC clients/services and cancellation/shutdown
+handling; then run real five-process replication/fault tests. This step does not
+complete Phase 3 or authorize moving to performance/settlement milestones.
+
+Commit/push was attempted. `git add` failed with `.git/index.lock: Operation not
+permitted`; no commit or push ran. The source, tests, schema, and documentation
+remain saved in the working tree above `e21d2de`.
+
+## Continuation: shared named Raft identity (2026-10-11)
+
+The Protobuf-boundary changes above remain in the working tree. This continuation
+closes the named-membership identity gap before the runtime owner/transport work.
+
+Added `RXM2` manifests with sorted unique member names bound to numeric IDs 1..N.
+The exact manifest remains part of the Raft state-record hash, so renamed members
+cannot reinterpret previously persisted votes/log entries. Legacy numeric-only
+`RXM1` encoding is preserved, with no automatic conversion in either direction.
+Existing store identity comparison rejects renamed/downgraded/upgraded identities
+before application replay. Shared manifest construction/validation and configuration
+digest calculation now serve both storage and the Protobuf codec. The codec accepts
+a named manifest directly, exposes it for store/Core initialization, and rejects
+legacy identities. The previous wire digest preimage is unchanged and tested.
+
+Added six offline record tests and one wire identity/recovery test. Coverage includes
+maximum-length manifests, every truncated prefix of a named record, malformed names
+with recomputed checksums, nonpositional IDs, format separation, member renaming,
+and recovered transport identity. Both serialized five-node scenarios now reopen
+their wire codec from an encoded named manifest and use it to bind every persisted
+state image. Two new real-database test cases exercise rename/downgrade/upgrade
+rejection with committed ledger recovery; their execution remains pending.
+
+The first run exposed a miscalculated maximum-record-size constant; the bound is
+now computed from field sizes and its 4,326-byte maximum test passes. Debug and
+ASan/UBSan wire builds passed all seven CTest entries, including 105 GoogleTests
+(35 core, 47 Raft/records/application, nine transaction-wire, fourteen Raft-wire),
+configuration checks, and both CLI smoke tests. No skips or sanitizer reports.
+The updated real-database test source passed strict syntax checking. Ledger-only
+configuration was retried and still fails on missing `RocksDBConfig.cmake`; actual
+database persistence has not been verified. `git diff --check` passes.
+
+Next: run real storage suites, implement the bounded single-owner runtime with
+gRPC clients/services and shutdown/cancellation, and execute five-process fault
+tests. The new identity format does not complete networked consensus, snapshots,
+performance, or settlement milestones. See docs/raft-persistence.md and
+docs/raft-wire.md for compatibility and integration requirements.
+
+The core-only build was also rebuilt after the bound correction; all four CTest
+entries passed (82 GoogleTests plus configuration and wallet smoke). Staging the
+combined pending changes for the requested commit/push was attempted, but `git add` failed
+with `.git/index.lock: Operation not permitted`. No commit or push ran; all changes
+remain saved locally above `e21d2de`.
+
+## Continuation: bounded single-owner runtime (2026-10-11)
+
+The wire and named-identity work remains pending in the working tree. Added a
+thread-owning runtime around Core with count/byte admission bounds, automatic
+steady-clock ticks, injected test clocks, future-based event completion, queued
+cancellation, and weak callback handles. The active event remains charged to the
+budget. Reserved vector/string capacity is accounted for, and an overlarge event
+cannot bypass limits by having a small logical payload. Returned proposal indices
+mean local append only; receipt-based client confirmation remains a separate step.
+
+Persistence, application, and outbound dispatch run on one owner. Unary replies
+are returned only after required persistence/application. The application callback
+must reach the exact commit marker, including on startup. Explicit leader rejection
+is nonfatal; other storage/application/driver/protocol failures stop admission,
+complete active/queued futures, and retain the original exception for diagnosis.
+Dispatch backpressure is counted as message loss, never as acknowledgment. Stop
+finishes active work, cancels queued work, joins once even under concurrent calls,
+and makes late callback handles reject work instead of touching a replacement node.
+
+Added seventeen real-thread GoogleTests using synchronization gates and deadlines,
+including count/byte saturation, 320 concurrent producer operations, reply ordering,
+ambiguous persistence/application failures, startup replay, idempotent signed
+transfers through the shared planner, weak-handle lifetime, clock regression,
+automatic election ticks, concurrent stop, and owner self-join rejection. Persistence
+in this suite is memory-backed. Added a real RocksDB runtime/reopen test to the
+ledger tier; its source passes strict syntax checking, but it has not run.
+
+Verification: all eight wire-tier CTest entries passed in Debug and ASan/UBSan,
+including 122 GoogleTests (35 core, 47 Raft/application, 17 runtime, nine transaction
+wire, fourteen Raft wire), configuration, wallet smoke, and wire CLI smoke. A
+separate ThreadSanitizer build compiled and passed all seventeen runtime tests with
+no reported races. No tests were skipped. CI now includes a dedicated runtime TSan
+job in addition to the existing normal/ASan jobs; remote results remain unobserved.
+CI YAML parsing and `git diff --check` passed. See docs/raft-runtime.md for ownership,
+cancellation, callback, and shutdown contracts.
+
+Next: verify the real storage suites, implement bounded gRPC request dispatch and
+service handlers using the runtime/wire codec, connect durable public query and
+submission APIs, and run five-process fault tests. The networking-only node is
+unchanged; this step does not claim networked Raft, disk-crash durability, snapshot
+support, settlement, or performance targets.
+
+Ledger-only configuration was retried and remains blocked by missing
+`RocksDBConfig.cmake`. Commit/push was attempted for all pending work, but staging
+failed with `.git/index.lock: Operation not permitted`. No commit or push ran;
+changes remain saved locally above `e21d2de`.

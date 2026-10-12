@@ -35,30 +35,66 @@ class Reader {
   std::string_view remaining;
 };
 Hash manifest_hash(const Manifest& manifest) { return keccak256(bytes(encode_manifest(manifest))); }
+void identifier(std::string_view value) {
+  if (value.empty() || value.size() > 128) throw std::invalid_argument("invalid Raft identifier length");
+  for (const auto c : value)
+    if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == '_' || c == '.'))
+      throw std::invalid_argument("invalid Raft identifier character");
+}
 } // namespace
 void validate_manifest(const Manifest& manifest) {
   validate_membership(manifest.node_id,manifest.members);
-  if (manifest.cluster_id.empty() || manifest.cluster_id.size() > 128 || manifest.genesis_digest == Hash{})
+  identifier(manifest.cluster_id);
+  if (manifest.genesis_digest == Hash{})
     throw std::invalid_argument("invalid Raft cluster/genesis identity");
-  for (const auto c : manifest.cluster_id)
-    if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == '_' || c == '.'))
-      throw std::invalid_argument("invalid Raft cluster identifier character");
+  if (!manifest.member_names.empty()) {
+    const auto& names = manifest.member_names;
+    if (names.size() != manifest.members.size() || !std::is_sorted(names.begin(),names.end()) ||
+        std::adjacent_find(names.begin(),names.end()) != names.end())
+      throw std::invalid_argument("invalid named Raft membership");
+    for (std::size_t i = 0; i < names.size(); ++i) {
+      identifier(names[i]);
+      if (manifest.members[i] != i+1) throw std::invalid_argument("named Raft IDs must match name positions");
+    }
+  }
+}
+Manifest make_named_manifest(std::string cluster, std::vector<std::string> members, Hash genesis, NodeId local) {
+  if (members.size() < 3 || members.size() > 31) throw std::invalid_argument("invalid named Raft member count");
+  Manifest result{std::move(cluster),local,{},genesis,std::move(members)};
+  for (NodeId i = 1; i <= result.member_names.size(); ++i) result.members.push_back(i);
+  validate_manifest(result); return result;
+}
+Hash configuration_digest(const Manifest& manifest) {
+  validate_manifest(manifest);
+  if (manifest.member_names.empty()) throw std::invalid_argument("wire configuration requires named Raft membership");
+  std::string encoded = "ROLLUPX_RAFT_WIRE_V1";
+  integer(encoded,manifest.cluster_id.size(),1); encoded += manifest.cluster_id;
+  integer(encoded,manifest.member_names.size(),1);
+  for (const auto& name : manifest.member_names) { integer(encoded,name.size(),1); encoded += name; }
+  append(encoded,manifest.genesis_digest); return keccak256(bytes(encoded));
 }
 std::string encode_manifest(const Manifest& manifest) {
-  validate_manifest(manifest); std::string out = "RXM1";
+  validate_manifest(manifest); std::string out = manifest.member_names.empty() ? "RXM1" : "RXM2";
   integer(out,manifest.cluster_id.size(),2); out += manifest.cluster_id;
   integer(out,manifest.node_id,4); integer(out,manifest.members.size(),1);
   for (const auto member : manifest.members) integer(out,member,4);
+  for (const auto& name : manifest.member_names) { integer(out,name.size(),1); out += name; }
   append(out,manifest.genesis_digest); return seal(std::move(out));
 }
 Manifest decode_manifest(std::string_view input) {
-  Reader reader(input,"RXM1",512); Manifest result{};
+  const bool named = input.starts_with("RXM2");
+  Reader reader(input,named ? "RXM2" : "RXM1",named ? kMaxManifestBytes : 512); Manifest result{};
   const auto length = reader.number(2);
   if (length == 0 || length > 128) throw std::invalid_argument("Raft cluster name length out of bounds");
   result.cluster_id = reader.take(length); result.node_id = static_cast<NodeId>(reader.number(4));
   const auto count = reader.number(1);
   if (count < 3 || count > 31 || count%2 == 0) throw std::invalid_argument("Raft membership count out of bounds");
   for (std::uint64_t i = 0; i < count; ++i) result.members.push_back(static_cast<NodeId>(reader.number(4)));
+  if (named) for (std::uint64_t i = 0; i < count; ++i) {
+    const auto name_length = reader.number(1);
+    if (name_length == 0 || name_length > 128) throw std::invalid_argument("Raft member name length out of bounds");
+    result.member_names.emplace_back(reader.take(name_length));
+  }
   const auto hash = bytes(reader.take(32)); std::copy(hash.begin(),hash.end(),result.genesis_digest.begin());
   reader.finish(); validate_manifest(result); return result;
 }

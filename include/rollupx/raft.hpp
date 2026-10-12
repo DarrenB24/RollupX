@@ -6,6 +6,7 @@
 #include <random>
 #include <set>
 #include <span>
+#include <stdexcept>
 #include <string>
 #include <variant>
 #include <vector>
@@ -65,6 +66,10 @@ struct Envelope { NodeId from, to; Message message; };
 // Throw on any ambiguous failure. The core then fails closed until reconstructed.
 // The simulation's memory recorder is NOT a durable implementation of this contract.
 using Persist = std::function<void(const State&)>;
+class ProposalRejected : public std::runtime_error {
+ public:
+  using std::runtime_error::runtime_error;
+};
 class Core {
  public:
   // Single event-loop owner. No internal threads, clock reads, networking, or disk IO.

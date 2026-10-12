@@ -8,9 +8,18 @@ struct Manifest {
   NodeId node_id;
   std::vector<NodeId> members; // Canonical sorted identity mapping, never reordered on open.
   Hash genesis_digest;        // Keccak of the exact versioned genesis record.
+  // Empty only for legacy RXM1 development stores. RXM2 binds sorted names to
+  // IDs 1..N; wire-enabled construction requires this mapping.
+  std::vector<std::string> member_names = {};
   bool operator==(const Manifest&) const = default;
 };
+inline constexpr std::size_t kMaxManifestBytes = 4+2+128+4+1+31*4+31*(1+128)+32+32;
 inline constexpr std::size_t kMaxStateRecordBytes = 92 + 12*kMaxLogEntries + kMaxLogBytes;
+Manifest make_named_manifest(std::string cluster, std::vector<std::string> members,
+  Hash genesis, NodeId local);
+// Shared peer configuration commitment. Requires named membership, excludes the
+// local ID, and preserves the existing ROLLUPX_RAFT_WIRE_V1 preimage format.
+Hash configuration_digest(const Manifest& manifest);
 void validate_manifest(const Manifest& manifest);
 std::string encode_manifest(const Manifest& manifest);
 Manifest decode_manifest(std::string_view bytes);

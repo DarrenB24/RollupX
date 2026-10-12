@@ -126,8 +126,10 @@ no-op progress. Balances/nonces agree and the retry
 does not execute twice. This remains a memory-backed protocol/execution test.
 
 The next integration steps are real RocksDB validation of the implemented Raft
-store and persistence callback, gRPC request/reply adapters, bounded owner queues,
-and verification of durable ordered application with no-op markers. Then run five real processes
+store and persistence callback, a gRPC driver using the tested
+[Protobuf request/reply codec](raft-wire.md) and [tested runtime](raft-runtime.md),
+and verification of durable ordered
+application with no-op markers. Then run five real processes
 through the same fault scenarios. Snapshot installation/compaction follows with
 its own interrupted-publication tests. Simulation time and test runtime are not
 benchmark results, and memory recorders do not demonstrate fsync or WAL durability.

@@ -35,6 +35,12 @@ Build, tests, and demo instructions are in [development.md](docs/development.md)
   Raft store and process-kill test source awaiting real-database verification.
 * Tested committed-entry application and recovery audit, including no-op progress
   and idempotent receipts; atomic RocksDB application/replay source and crash tests.
+* Raft Protobuf codec with bounded validation, configuration checks, correlated
+  replies, and five-node serialized-message fault simulations.
+* Shared named Raft identity records that bind persistent votes/logs and wire
+  configuration to the same member mapping, with explicit legacy-format rejection.
+* Single-owner Raft runtime with bounded admission, automatic ticking, cancellation,
+  fail-stop handling, safe shutdown, and tested concurrent producers.
 
 The gRPC/RocksDB source and five-node deployment **have not run on the initial
 development host**: those dependencies are missing and socket binding is denied.
@@ -57,6 +63,8 @@ See [offline wallet and execution](docs/crypto-and-execution.md) for signing com
 test vectors, and the distinction between reference execution and durable commitment.
 The core build also runs [Raft simulation tests](docs/raft-core.md); these do not
 replace real-database or five-process consensus tests.
+It also tests the [threaded Raft runtime](docs/raft-runtime.md), including a separate
+ThreadSanitizer check and its pending gRPC integration contract.
 The next build tier, `-DROLLUPX_LEDGER_ONLY=ON`, adds real RocksDB without gRPC.
 See [persistence and recovery](docs/persistence.md) for its protocol, CLI, and tests.
 That build also includes the [Raft persistence suite](docs/raft-persistence.md).
@@ -64,6 +72,8 @@ See [committed application](docs/raft-application.md) for command encoding,
 commit/application boundaries, recovery, and verification status.
 With protobuf installed, `-DROLLUPX_WIRE_ONLY=ON` builds the tested transaction
 adapter and `rollupx-wire` without RocksDB/gRPC. See [wire validation](docs/transaction-wire.md).
+This tier also tests the [Raft message boundary](docs/raft-wire.md), including
+serialized elections, transfers, leader restart, and partition recovery.
 
 Install the native dependencies listed in [development.md](docs/development.md), then:
 

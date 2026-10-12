@@ -38,18 +38,36 @@ different mode fails instead of silently upgrading an existing database.
 
 | Field | Bytes |
 | --- | --- |
-| ASCII `RXM1` | 4 |
+| ASCII `RXM1` (legacy numeric) or `RXM2` (named membership) | 4 |
 | Cluster identifier length | 2 |
 | Cluster identifier, ASCII letters/digits/`._-` | 1–128 |
 | Local numeric node ID | 4 |
 | Member count (odd, 3–31) | 1 |
 | Sorted unique nonzero member IDs | 4 each |
+| `RXM2` only: each member name's length then ASCII bytes, in member order | 1 + 1–128 each |
 | Genesis digest | 32 |
 | Keccak-256 checksum of the preceding bytes | 32 |
 
 The local ID must belong to the member set. The genesis digest is Keccak-256 of the
-exact `encode_genesis` record, and cannot be zero. The future runtime adapter must
-use the same stable name-to-numeric-ID mapping in its topology and Core config.
+exact `encode_genesis` record, and cannot be zero. In `RXM2`, names are strictly
+sorted, unique identifiers using the same character rules as cluster names, and
+the numeric IDs must be exactly 1 through the member count. Each name is thus
+permanently bound to its one-based position. The maximum named record is 4,326 bytes.
+
+`make_named_manifest` constructs this mapping without silently sorting names.
+`configuration_digest` produces the shared peer commitment described in
+[Raft wire](raft-wire.md); unlike the storage manifest hash, it excludes local
+node identity. The codec accepts this manifest directly and exposes the same
+manifest for store/Core initialization. Raft state records bind the full encoded
+manifest, including names, so changing a name invalidates recovery of its saved
+votes/log. A runtime must still verify its endpoint routing against these names.
+
+An empty name list explicitly selects the original `RXM1` format; its existing
+encoding is preserved for development stores. The wire codec rejects such
+numeric-only identities. Supplying names to an existing numeric-only store, or
+removing/renaming names on a named store, fails identity comparison before ledger
+replay. There is no automatic migration or fallback. A future migration requires
+an explicit offline protocol that preserves vote/log identity.
 
 `raft/state` contains one complete persistent image:
 
@@ -109,11 +127,17 @@ time target is claimed. Incremental log keys require a later, tested migration.
 
 ## Tests and remaining work
 
-Nine offline record tests cover round trips, frozen endian offsets, mutations,
+Fifteen offline record tests cover round trips, frozen endian offsets, mutations,
 every truncated prefix, identity binding, valid-checksum malformed records, and
 legal/illegal state transitions. Five-node simulations now encode/decode every
 stored update and apply the same transition guard, including crash/restart and
 partition histories. These still use memory for storage.
+
+Named-manifest tests additionally cover maximum-size records, truncation, malformed
+names with recomputed checksums, positional numeric IDs, format separation,
+configuration preimage stability, and saved-vote rejection after a member rename.
+The serialized five-node simulations recover their codec from the named manifest
+and bind every stored state image to that exact identity.
 
 Six real database tests cover Core callback integration, vote retention, uncommitted
 suffixes, exclusive ownership/identity, invalid updates, poisoned handles, suffix
@@ -130,3 +154,6 @@ The ledger-enabled store now includes accounts, receipts, applied progress, star
 audit/replay, and separate database/application-kill tests as described in
 [committed application](raft-application.md). Next verify real storage and connect
 the gRPC driver before claiming durable replicated transfers.
+Two additional ledger database tests check named identity retention through replay,
+rename/downgrade rejection, and refusal to silently upgrade a numeric-only store.
+Their source passes syntax checking; actual RocksDB execution remains pending.
