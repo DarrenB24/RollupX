@@ -41,6 +41,10 @@ Build, tests, and demo instructions are in [development.md](docs/development.md)
   configuration to the same member mapping, with explicit legacy-format rejection.
 * Single-owner Raft runtime with bounded admission, automatic ticking, cancellation,
   fail-stop handling, safe shutdown, and tested concurrent producers.
+* Bounded peer dispatch and ingress with deadline/cancellation handling, plus a
+  threaded five-replica partition/healing test using actual Protobuf serialization.
+* Raft gRPC adapter and loopback-test source with a storage-independent build tier;
+  actual gRPC compilation/execution remains pending.
 
 The gRPC/RocksDB source and five-node deployment **have not run on the initial
 development host**: those dependencies are missing and socket binding is denied.
@@ -64,7 +68,9 @@ test vectors, and the distinction between reference execution and durable commit
 The core build also runs [Raft simulation tests](docs/raft-core.md); these do not
 replace real-database or five-process consensus tests.
 It also tests the [threaded Raft runtime](docs/raft-runtime.md), including a separate
-ThreadSanitizer check and its pending gRPC integration contract.
+ThreadSanitizer check. The [Raft transport](docs/raft-transport.md) documents tested
+peer scheduling and the gRPC adapter's pending integration gates. Use
+`-DROLLUPX_TRANSPORT_ONLY=ON` to build its socket tests with gRPC but without RocksDB.
 The next build tier, `-DROLLUPX_LEDGER_ONLY=ON`, adds real RocksDB without gRPC.
 See [persistence and recovery](docs/persistence.md) for its protocol, CLI, and tests.
 That build also includes the [Raft persistence suite](docs/raft-persistence.md).

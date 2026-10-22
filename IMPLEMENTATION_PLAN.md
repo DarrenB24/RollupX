@@ -93,7 +93,10 @@ Cluster integration and phase acceptance still depend on verified durable execut
       real-database reopen tests implemented, awaiting execution.
 - [x] Bounded single-owner runtime, automatic ticks, cancellation, weak callback
       handles, fail-stop behavior, shutdown/join, and concurrent producer tests.
-- [ ] gRPC service/client driver and public ledger integration with the runtime.
+- [x] Bounded peer workers/ingress, deadline/cancellation handling, and threaded
+      five-replica serialized transfer/partition tests (memory-backed persistence).
+- [x] gRPC service/client adapter and loopback test source; transport-only CMake/CI tier.
+- [ ] Compile/run actual gRPC adapter; node-driver and public ledger integration.
 - [ ] Election/vote persistence, randomized timeouts, term handling and heartbeats.
 - [ ] Durable append/conflict repair, per-peer progress, current-term commit rule.
 - [ ] Ordered committed application, leader hints, check-quorum, no-op barrier.
@@ -553,3 +556,49 @@ Ledger-only configuration was retried and remains blocked by missing
 `RocksDBConfig.cmake`. Commit/push was attempted for all pending work, but staging
 failed with `.git/index.lock: Operation not permitted`. No commit or push ran;
 changes remain saved locally above `e21d2de`.
+
+## Continuation: bounded peer transport and ingress (2026-10-11)
+
+Started from the user's clean `ee174f2` commit, which includes the earlier runtime
+and wire work. Added one worker per remote member with one active and one pending
+RPC each, nonblocking admission/backpressure, original-request correlation, local
+deadline enforcement, weak runtime handoff, terminal-error diagnostics, and
+cancellation-aware shutdown. Ingress bounds concurrent calls and wait duration,
+validates messages before admission, cancels queued requests on abandoned waits,
+and exposes successful replies only after owner persistence/application completes.
+
+Added twelve real-thread tests, including queue saturation and independent peers,
+late/malformed/failed responses, cancellation callback lock safety, expired handles,
+storage failure, unfinished application, and queued request cancellation. A
+five-runtime/twenty-worker test serializes actual Protobuf messages, partitions the
+leader with one follower, verifies minority noncommitment, elects a majority leader,
+executes signed transfers with retries, heals the partition, and checks identical
+committed prefixes, balances/nonces, and at-most-once receipts. Its durable-state
+images are memory-backed, so this does not establish actual disk-crash recovery.
+
+Implemented gRPC client/service adapters with per-call deadlines/cancellation,
+endpoint-map validation, explicit errors, message/server resource limits, and four
+real-loopback test cases. Snapshot RPCs remain explicitly unimplemented. The new
+`ROLLUPX_TRANSPORT_ONLY` build tier isolates gRPC from RocksDB. CI includes normal
+and ASan/UBSan socket jobs and expands the TSan job to runtime plus portable
+transport. These remote jobs have not been observed running.
+
+Verification: Debug and ASan/UBSan pass all nine wire-tier CTest entries, containing
+134 GoogleTests (35 core, 47 Raft/application, 17 runtime, nine transaction wire,
+fourteen Raft wire, twelve transport), configuration checks, and both CLI smoke
+tests. The separate ThreadSanitizer build passes all 29 runtime/transport cases
+with no reported races. No tests were skipped. Transport-only configuration was
+attempted and fails on missing `gRPCConfig.cmake`; the gRPC adapter and its socket
+tests remain uncompiled/unexecuted locally. See docs/raft-transport.md for limits,
+ownership, cancellation semantics, build instructions, and the integration contract.
+
+Next gates: install/verify real gRPC and RocksDB builds, compose the durable node
+driver and public transaction/query APIs, then execute five-process failure tests.
+Snapshot installation/compaction remains pending. The existing networking-only
+node does not yet sequence transfers; no performance or settlement completion is
+claimed by this step.
+
+CI YAML parsing and `git diff --check` passed. The requested commit/push was
+attempted, but `git add` failed with `.git/index.lock: Operation not permitted`.
+No commit or push ran; the implementation and verification record remain saved
+in the working tree above `ee174f2`.

@@ -9,13 +9,13 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - name: Install runtime race-test dependencies
-        run: sudo apt-get update && sudo apt-get install -y clang cmake ninja-build libssl-dev libgtest-dev
-      - name: Build and test owner-thread runtime with ThreadSanitizer
+      - name: Install runtime and transport race-test dependencies
+        run: sudo apt-get update && sudo apt-get install -y clang cmake ninja-build libssl-dev libgtest-dev libprotobuf-dev protobuf-compiler
+      - name: Build and test owner-thread runtime and peer dispatch with ThreadSanitizer
         run: |
-          cmake -S . -B build-tsan -G Ninja -DCMAKE_CXX_COMPILER=clang++ -DROLLUPX_CORE_ONLY=ON -DROLLUPX_TSAN=ON -DCMAKE_BUILD_TYPE=Debug
-          cmake --build build-tsan --target runtime_tests --parallel 2
-          ctest --test-dir build-tsan -R '^runtime_tests$' --output-on-failure --output-junit runtime-results.xml
+          cmake -S . -B build-tsan -G Ninja -DCMAKE_CXX_COMPILER=clang++ -DROLLUPX_WIRE_ONLY=ON -DROLLUPX_TSAN=ON -DCMAKE_BUILD_TYPE=Debug
+          cmake --build build-tsan --target runtime_tests transport_tests --parallel 2
+          ctest --test-dir build-tsan -R '^(runtime|transport)_tests$' --output-on-failure --output-junit runtime-results.xml
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -23,6 +23,27 @@ jobs:
           path: |
             build-tsan/runtime-results.xml
             build-tsan/Testing/Temporary/LastTest.log
+  grpc-transport:
+    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        sanitize: ["OFF", "ON"]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install real gRPC transport dependencies
+        run: sudo apt-get update && sudo apt-get install -y cmake ninja-build libssl-dev libgtest-dev libgrpc++-dev libprotobuf-dev protobuf-compiler protobuf-compiler-grpc
+      - name: Build and test socket transport without RocksDB
+        run: |
+          cmake -S . -B build-transport -G Ninja -DROLLUPX_TRANSPORT_ONLY=ON -DCMAKE_BUILD_TYPE=Debug -DROLLUPX_SANITIZE=${{ matrix.sanitize }}
+          cmake --build build-transport --parallel 2
+          ctest --test-dir build-transport --output-on-failure --output-junit transport-results.xml
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: transport-results-sanitize-${{ matrix.sanitize }}
+          path: |
+            build-transport/transport-results.xml
+            build-transport/Testing/Temporary/LastTest.log
   protobuf-wire:
     runs-on: ubuntu-24.04
     strategy:

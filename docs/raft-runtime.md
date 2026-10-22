@@ -3,8 +3,9 @@
 `rollupx_runtime` owns a real worker thread, a bounded inbox, and one Raft core.
 Concurrent callers use copyable weak handles to enqueue validated protocol events
 or proposals. Persistence, committed application, protocol decisions, and outbound
-dispatch all run on the owner. The gRPC driver is still pending; the existing node
-does not instantiate this runtime or accept replicated transfers yet.
+dispatch all run on the owner. The [bounded transport](raft-transport.md) now has
+tested dispatch/ingress logic and gRPC adapter source awaiting execution. The existing
+node does not instantiate this runtime or accept replicated transfers yet.
 
 ## Ownership and callbacks
 
@@ -27,8 +28,8 @@ raft::Runtime runtime(config, store.load(),
   });
 ```
 
-`transport.try_enqueue` above is the required driver interface, not an existing
-transport implementation. The store and transport must outlive the runtime. A real
+`transport.try_enqueue` is implemented by `PeerDispatcher`; bind it to the runtime
+handle after construction. The store and transport must outlive the runtime. A real
 driver must independently seed election randomness and verify its named endpoint
 mapping against the manifest. Runtime callbacks may request shutdown or enqueue
 work through handles; they must not wait on that work, join their own runtime, or
@@ -87,7 +88,7 @@ The nonblocking dispatch callback receives outbound requests only. A `false` ret
 means transport saturation/loss and increments `outbound_dropped`; it is never
 converted into a Raft acknowledgment. Raft's normal heartbeat/election retries
 handle loss. A thrown dispatch error stops the runtime. Unary responses stay in
-the event result so a future gRPC handler can encode them against the original call.
+the event result so ingress can encode them against the original call.
 Transport threads must retain request correlation, enforce deadlines and their own
 queue limits, and submit valid responses through a handle. They never access Core.
 
