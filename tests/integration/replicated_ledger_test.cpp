@@ -19,15 +19,17 @@ TEST(ReplicatedLedger, CommitAndApplicationAreSeparateAndNoopsHaveDurableProgres
   EXPECT_EQ(store.batch(2)->transactions.size(),2U); EXPECT_EQ(store.apply_committed(),4U);
 }
 TEST(ReplicatedLedger, ReopenReplaysCommittedSuffixButNeverUncommittedEntries) {
-  Directory directory;
+  Directory directory; const auto history = raft_ledger_history();
   {
-    Store store(directory.path,raft_ledger_manifest(),ledger_genesis()); auto history = raft_ledger_history();
-    history.commit = 2; store.persist(history);
+    Store store(directory.path,raft_ledger_manifest(),ledger_genesis()); auto pending = history;
+    pending.commit = 2; store.persist(pending);
   }
   {
     Store recovered(directory.path,raft_ledger_manifest(),ledger_genesis());
     EXPECT_EQ(recovered.ledger_state().applied_index,2U); EXPECT_EQ(recovered.ledger_state().accounts[0].balance,90U);
-    EXPECT_FALSE(recovered.batch(4)); recovered.persist(raft_ledger_history());
+    EXPECT_FALSE(recovered.batch(4)); EXPECT_EQ(recovered.load().log,history.log);
+    // Advance only the commit index; re-signing would change the same-term log bytes.
+    recovered.persist(history);
   }
   Store recovered(directory.path,raft_ledger_manifest(),ledger_genesis());
   EXPECT_EQ(recovered.ledger_state().applied_index,4U); EXPECT_EQ(recovered.ledger_state().accounts[0].balance,70U);
