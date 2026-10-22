@@ -4,6 +4,7 @@
 #include <chrono>
 #include <future>
 #include <memory>
+#include <string_view>
 
 namespace rollupx::raft {
 enum class Admission { queued, full, invalid, stopped };
@@ -22,6 +23,7 @@ struct EventResult {
   std::optional<Envelope> reply; // Unary response, after persistence/application.
   std::optional<Index> proposed_index; // Admission to log, NOT confirmation.
   RuntimeStatus status;
+  std::optional<std::string> policy_rejection = {}; // Non-durable admission reason.
 };
 struct Ticket {
   Admission admission = Admission::stopped;
@@ -41,6 +43,10 @@ using ApplyCommitted = std::function<Index(Index)>;
 // Nonblocking, bounded transport enqueue. False means packet loss/backpressure,
 // counted in status; throw for a driver failure that must stop the node.
 using Dispatch = std::function<bool(const Envelope&)>;
+// Runs on the owner before a leader appends a proposal. No state mutation; a
+// returned reason rejects admission. Any exception (including ProposalRejected)
+// is a callback failure and stops the runtime. Replicated entries bypass policy.
+using ProposalCheck = std::function<std::optional<std::string>(const State&, std::string_view)>;
 class Runtime {
   struct Inbox;
   struct Impl;
@@ -51,13 +57,14 @@ class Runtime {
     Ticket receive(Envelope message) const;
     Ticket propose(std::string command) const;
     Ticket tick() const; // Explicit scheduler wake, useful with an injected clock.
+    RuntimeStatus status() const; // Expired handles report stopped.
    private:
     friend class Runtime;
     explicit Handle(std::weak_ptr<Inbox> inbox) : inbox_(std::move(inbox)) {}
     std::weak_ptr<Inbox> inbox_;
   };
   Runtime(Config config, State recovered, Persist persist, ApplyCommitted apply,
-    Dispatch dispatch, RuntimeOptions options = {}, RuntimeClock clock = {});
+    Dispatch dispatch, RuntimeOptions options = {}, RuntimeClock clock = {}, ProposalCheck check = {});
   ~Runtime();
   Runtime(const Runtime&) = delete;
   Runtime& operator=(const Runtime&) = delete;

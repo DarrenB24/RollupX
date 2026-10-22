@@ -45,6 +45,8 @@ Build, tests, and demo instructions are in [development.md](docs/development.md)
   threaded five-replica partition/healing test using actual Protobuf serialization.
 * Raft gRPC adapter and loopback-test source with a storage-independent build tier;
   actual gRPC compilation/execution remains pending.
+* Owner-thread transfer admission and bounded receipt confirmation, including
+  concurrent retry tests across five threaded replicas. Public node wiring remains pending.
 
 The gRPC/RocksDB source and five-node deployment **have not run on the initial
 development host**: those dependencies are missing and socket binding is denied.
@@ -67,6 +69,8 @@ See [offline wallet and execution](docs/crypto-and-execution.md) for signing com
 test vectors, and the distinction between reference execution and durable commitment.
 The core build also runs [Raft simulation tests](docs/raft-core.md); these do not
 replace real-database or five-process consensus tests.
+It includes [transaction admission and confirmation](docs/transaction-admission.md)
+tests that distinguish a local append, majority commitment, and an applied receipt.
 It also tests the [threaded Raft runtime](docs/raft-runtime.md), including a separate
 ThreadSanitizer check. The [Raft transport](docs/raft-transport.md) documents tested
 peer scheduling and the gRPC adapter's pending integration gates. Use

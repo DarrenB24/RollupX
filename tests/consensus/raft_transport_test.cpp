@@ -1,6 +1,8 @@
 #include "rollupx/raft_transport.hpp"
+#include "rollupx/ledger_submission.hpp"
 #include "../raft_store_fixture.hpp"
 #include <condition_variable>
+#include <algorithm>
 #include <gtest/gtest.h>
 #include <mutex>
 #include <type_traits>
@@ -169,8 +171,9 @@ class ThreadedCluster {
     std::unique_ptr<PeerDispatcher> transport;
     std::unique_ptr<Runtime> runtime;
     std::unique_ptr<RaftIngress> ingress;
+    std::unique_ptr<LedgerSubmission> submission;
   };
-  ThreadedCluster() {
+  explicit ThreadedCluster(bool guarded = false) {
     for (NodeId id = 1; id <= 5; ++id) nodes.emplace(id,std::make_unique<Replica>(id));
     for (auto& [id,node] : nodes) {
       node->transport = std::make_unique<PeerDispatcher>(node->wire,
@@ -197,6 +200,10 @@ class ThreadedCluster {
         },2s);
       auto config = raft_config(); config.id = id; config.seed = id*991;
       auto* replica = node.get();
+      const ReceiptLookup read = [replica](const Hash& id) -> std::optional<LedgerReceipt> {
+        std::lock_guard lock(replica->mutex); const auto found = replica->receipts.find(id);
+        return found == replica->receipts.end() ? std::nullopt : std::optional{found->second};
+      };
       node->runtime = std::make_unique<Runtime>(config,node->disk,[replica](const State& state) {
         std::lock_guard lock(replica->mutex);
         validate_persisted_transition(replica->wire.manifest(),replica->disk,state);
@@ -213,9 +220,13 @@ class ThreadedCluster {
           replica->ledger = plan.state;
         }
         return replica->ledger.applied_index;
-      },[replica](const Envelope& message) { return replica->transport->try_enqueue(message); },manual(),[&] { return now.load(); });
+      },[replica](const Envelope& message) { return replica->transport->try_enqueue(message); },manual(),[&] { return now.load(); },
+        guarded ? ledger_proposal_policy(ledger_genesis(),[replica] {
+          std::lock_guard lock(replica->mutex); return replica->ledger;
+        },read) : ProposalCheck{});
       node->transport->bind(node->runtime->handle());
       node->ingress = std::make_unique<RaftIngress>(node->wire,node->runtime->handle(),IngressOptions{16,2s,1ms});
+      if (guarded) node->submission = std::make_unique<LedgerSubmission>(node->runtime->handle(),read);
     }
   }
   ~ThreadedCluster() {
@@ -283,6 +294,32 @@ TEST(RaftThreadedCluster, PartitionedLeaderCannotCommitAndFiveReplicasConvergeWi
       (void)other_id;
       for (Index i = 0; i < std::min(node->disk.commit,other->disk.commit); ++i) EXPECT_EQ(node->disk.log[i],other->disk.log[i]);
     }
+  }
+}
+TEST(RaftThreadedCluster, GuardedSubmissionConfirmsAppliedTransfersAndConcurrentRetriesAcrossFiveReplicas) {
+  ThreadedCluster cluster(true); cluster.until([&] { return cluster.leader() != 0; });
+  auto& leader = *cluster.nodes.at(cluster.leader());
+  const auto transaction = ledger_transaction();
+  std::vector<std::future<SubmissionResult>> callers;
+  for (unsigned i = 0; i < 5; ++i) callers.push_back(std::async(std::launch::async,[&] {
+    return leader.submission->submit(transaction,std::chrono::steady_clock::now()+2s);
+  }));
+  cluster.until([&] {
+    return std::all_of(callers.begin(),callers.end(),[](auto& call) { return call.wait_for(0ms) == std::future_status::ready; });
+  });
+  unsigned confirmed = 0;
+  for (auto& call : callers) {
+    const auto result = call.get(); EXPECT_TRUE(result.code == SubmissionCode::confirmed || result.code == SubmissionCode::busy);
+    if (result.code == SubmissionCode::confirmed) { ++confirmed; ASSERT_TRUE(result.receipt); EXPECT_EQ(result.receipt->log_index,2U); }
+  }
+  EXPECT_GT(confirmed,0U); cluster.until([&] { return cluster.applied(2); });
+  for (const auto& [id,node] : cluster.nodes) {
+    SCOPED_TRACE(id);
+    const auto retry = node->submission->submit(transaction,std::chrono::steady_clock::now()+1s);
+    EXPECT_EQ(retry.code,SubmissionCode::confirmed); ASSERT_TRUE(retry.receipt); EXPECT_EQ(retry.receipt->log_index,2U);
+    std::lock_guard lock(node->mutex);
+    EXPECT_EQ(node->ledger.accounts[0].balance,90U); EXPECT_EQ(node->ledger.accounts[0].nonce,1U);
+    EXPECT_EQ(node->receipts.size(),1U); EXPECT_EQ(node->disk.log.size(),2U);
   }
 }
 } // namespace

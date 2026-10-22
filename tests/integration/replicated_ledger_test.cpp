@@ -1,6 +1,7 @@
 #include "../test_support.hpp"
 #include "../raft_store_fixture.hpp"
 #include "rollupx/raft_runtime.hpp"
+#include "rollupx/ledger_submission.hpp"
 #include <gtest/gtest.h>
 
 namespace {
@@ -110,6 +111,27 @@ TEST(ReplicatedLedger, RuntimePublishesReplyOnlyAfterStoreApplicationAndSurvives
     EXPECT_TRUE(std::get<AppendResponse>(result.reply->message).success);
     EXPECT_EQ(store.ledger_state().accounts[0].balance,70U); EXPECT_EQ(store.ledger_state().accounts[0].nonce,2U);
     runtime.stop();
+  }
+}
+TEST(ReplicatedLedger, SubmissionRetriesReturnDurableSuccessAndRejectionAcrossReopen) {
+  using namespace std::chrono_literals;
+  Directory directory; const auto identity = raft_ledger_manifest();
+  { Store store(directory.path,identity,ledger_genesis()); store.persist(raft_ledger_history()); }
+  for (unsigned reopen = 0; reopen < 2; ++reopen) {
+    Store store(directory.path,identity,ledger_genesis());
+    const ReceiptLookup read = [&](const Hash& id) { return store.receipt(id); };
+    Runtime runtime(raft_config(),store.load(),[&](const State& state) { store.persist(state); },
+      [&](Index) { return store.apply_committed(); },[](const Envelope&) { return false; },
+      RuntimeOptions{32,1024*1024,false,10ms},{},
+      ledger_proposal_policy(ledger_genesis(),[&] { return store.ledger_state(); },read));
+    LedgerSubmission submission(runtime.handle(),read);
+    for (const auto& transaction : {ledger_transaction(),ledger_transaction(1,1000)}) {
+      const auto result = submission.submit(transaction,std::chrono::steady_clock::now()+1s);
+      EXPECT_EQ(result.code,SubmissionCode::confirmed); EXPECT_EQ(result.receipt,store.receipt(transaction.id));
+    }
+    EXPECT_EQ(store.ledger_state().accounts[0].balance,70U);
+    EXPECT_EQ(store.ledger_state().accounts[0].nonce,2U); EXPECT_EQ(store.load().log.size(),4U);
+    submission.close(); runtime.stop();
   }
 }
 } // namespace

@@ -33,7 +33,7 @@ is a protocol no-op and cannot be submitted as a transfer batch.
 Signature authentication does not imply execution success. Chain ID, account
 membership, nonce, balance, self-transfer, and arithmetic checks run sequentially
 against the preceding committed state. Invalid state transitions produce durable
-rejection receipts without changing balances or nonces. Future leader admission
+rejection receipts without changing balances or nonces. Leader admission
 must check those constraints before sequencing as well.
 
 ## Storage and application boundary

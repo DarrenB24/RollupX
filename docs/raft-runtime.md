@@ -76,6 +76,14 @@ durable transaction receipt. A follower/no-quorum/uncommitted-barrier proposal i
 errors produce `failed`, stop admission, and preserve the original exception through
 `Runtime::failure()`.
 
+An optional owner-thread `ProposalCheck` can reject leader admission before any
+append. Its returned reason appears in `EventResult::policy_rejection` and is not
+a durable receipt. Any policy exception fails the runtime, including exceptions
+of type `ProposalRejected`. Replicated entries bypass client admission policy.
+The [ledger policy](transaction-admission.md) initially permits one outstanding
+single-transfer command. `Handle::status()` returns the same diagnostic snapshot
+as the runtime; an expired handle reports stopped.
+
 ## Scheduling and outbound work
 
 Automatic ticking uses a steady-clock wait, by default every 10 ms. Due ticks run

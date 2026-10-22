@@ -6,6 +6,36 @@ Work in phase order; compile and run relevant tests before promoting a milestone
 Never return placeholder success for absent consensus, execution, or settlement.
 This plan is the status ledger; design documents describe future behavior.
 
+### Current next steps (2026-10-22)
+
+The latest verified increment is the owner-thread transfer admission and durable
+receipt confirmation bridge, including threaded five-replica submission/retries.
+The full rollup is not complete. Remaining work, in dependency order:
+
+1. **Unblock native integration:** build/run gRPC transport and RocksDB ledger/Raft
+   suites on a dependency-equipped host. Verify sync-write recovery and actual
+   sockets; CI configuration alone is not evidence. Current host cannot resolve
+   GitHub for downloads and lacks both dependency configurations.
+2. **Compose the replicated node:** use one audited Store/Runtime/transport identity,
+   install the admission policy and confirmation bridge, expose durable transaction,
+   balance/nonce/batch and leader queries, and wire readiness/failure shutdown.
+   Acceptance: signed client transfer produces an applied receipt on the five-node
+   cluster with identical balances/nonces and idempotent retries.
+3. **Complete consensus recovery:** run real five-process leader/follower kill,
+   restart, partition, delayed-message and duplicate-submission tests; implement
+   snapshot creation/install/compaction with crash-safe publication. Acceptance:
+   committed prefixes never conflict and committed transfers survive recovery.
+4. **Build and measure the pipeline:** bounded mempool, validation workers, batching,
+   configurable C++ load generator, committed TPS and applied-receipt latency
+   reports, replication/storage metrics, and batching comparisons. Optimize only
+   after native replicated-ledger tests pass.
+5. **Add verifiable settlement:** transaction/account Merkle trees and proof APIs,
+   state/batch commitments, data availability, Solidity fraud challenges, and
+   Foundry/Anvil end-to-end tests. No unsupported-accusation challenge shortcut.
+6. **Finish deployment and acceptance:** verified five-node Compose fault demos,
+   Anvil/monitoring services, Grafana dashboard coverage, then Kubernetes with
+   persistent volumes. Complete CI and document measured performance/limitations.
+
 Initial inspection (2026-10-09): empty directory, Apple Clang 21 and OpenSSL 3
 installed. No CMake, Ninja, protoc, gRPC, RocksDB, GoogleTest, Docker, forge, or
 anvil on PATH. GitHub DNS lookup failed during dependency download. No parent
@@ -96,6 +126,8 @@ Cluster integration and phase acceptance still depend on verified durable execut
 - [x] Bounded peer workers/ingress, deadline/cancellation handling, and threaded
       five-replica serialized transfer/partition tests (memory-backed persistence).
 - [x] gRPC service/client adapter and loopback test source; transport-only CMake/CI tier.
+- [x] Owner-thread single-transfer admission, bounded durable-receipt confirmation,
+      and concurrent retry tests with five threaded replicas (memory-backed).
 - [ ] Compile/run actual gRPC adapter; node-driver and public ledger integration.
 - [ ] Election/vote persistence, randomized timeouts, term handling and heartbeats.
 - [ ] Durable append/conflict repair, per-peer progress, current-term commit rule.
@@ -602,3 +634,50 @@ CI YAML parsing and `git diff --check` passed. The requested commit/push was
 attempted, but `git add` failed with `.git/index.lock: Operation not permitted`.
 No commit or push ran; the implementation and verification record remain saved
 in the working tree above `ee174f2`.
+
+## Continuation: guarded submission and durable confirmation (2026-10-22)
+
+Started from clean commit `9c23600`, containing the previous transport increment.
+Rechecked dependency availability: transport-only and ledger-only CMake configure
+fail on missing `gRPCConfig.cmake` and `RocksDBConfig.cmake`; GitHub download lookup
+fails DNS resolution. Native integration remains blocked, so this step implements
+the independently testable admission/confirmation boundary needed by the node API.
+
+Runtime now supports an owner-only proposal policy and weak-handle status reads.
+An explicit policy result rejects admission without writing a log entry. Any
+policy exception fails the runtime, including the Core admission-exception type;
+this prevents a storage error from masquerading as an ordinary rejection.
+Replicated entries bypass leader admission and retain deterministic application.
+
+The ledger policy authenticates a single-transfer command and checks applied
+progress, existing receipts, chain/account/nonce/balance/overflow rules, outstanding
+log work, and log capacity before append. It allows only one outstanding command
+and never publishes speculative account changes. This is a conservative initial
+admission strategy, not the Phase 4 mempool/batching implementation.
+
+The bounded submission bridge authenticates cached retries, waits for actual
+application receipts, cancels abandoned queued proposals, reports ambiguous
+deadline/leadership-loss outcomes, and fails closed on receipt-reader errors.
+Admission rejection has no durable receipt; a previously committed rejection
+returns its original durable receipt. Timeout does not release an uncommitted log
+slot or imply rollback. Public gRPC submission/query wiring remains pending.
+
+Added twelve submission tests, three runtime policy/lifetime tests, and one
+five-runtime concurrent-submission/retry test. Coverage includes majority commit
+with blocked application, late commitment after timeout, queued cancellation,
+conflicting/duplicate requests, follower receipt retries, invalid signature IDs,
+durable rejection results, bounded calls, and storage-error propagation. Added a
+real RocksDB replay/reopen submission test; its strict C++20 syntax check passes,
+but it cannot execute without RocksDB and is not counted as a passing runtime test.
+
+Verification: all ten wire-tier CTest entries pass in Debug and ASan/UBSan, including
+150 GoogleTests (35 core, 47 Raft/application, 20 runtime, 12 submission, nine
+transaction wire, fourteen Raft wire, thirteen transport), configuration checks,
+and both CLI smoke tests. The separate ThreadSanitizer build passes all 45
+runtime/submission/transport cases without reported races. No tests skipped.
+CI's TSan job now includes submission tests. See docs/transaction-admission.md for
+the callback durability/lifetime contract, result semantics, and remaining wiring.
+
+CI YAML parsing and `git diff --check` passed. Commit/push was attempted, but
+staging failed with `.git/index.lock: Operation not permitted`. No commit or push
+ran; all changes remain saved locally above `9c23600`.

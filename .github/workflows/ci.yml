@@ -11,11 +11,11 @@ jobs:
       - uses: actions/checkout@v4
       - name: Install runtime and transport race-test dependencies
         run: sudo apt-get update && sudo apt-get install -y clang cmake ninja-build libssl-dev libgtest-dev libprotobuf-dev protobuf-compiler
-      - name: Build and test owner-thread runtime and peer dispatch with ThreadSanitizer
+      - name: Build and test runtime, submission, and peer dispatch with ThreadSanitizer
         run: |
           cmake -S . -B build-tsan -G Ninja -DCMAKE_CXX_COMPILER=clang++ -DROLLUPX_WIRE_ONLY=ON -DROLLUPX_TSAN=ON -DCMAKE_BUILD_TYPE=Debug
-          cmake --build build-tsan --target runtime_tests transport_tests --parallel 2
-          ctest --test-dir build-tsan -R '^(runtime|transport)_tests$' --output-on-failure --output-junit runtime-results.xml
+          cmake --build build-tsan --target runtime_tests submission_tests transport_tests --parallel 2
+          ctest --test-dir build-tsan -R '^(runtime|submission|transport)_tests$' --output-on-failure --output-junit runtime-results.xml
       - uses: actions/upload-artifact@v4
         if: always()
         with:

@@ -73,10 +73,10 @@ struct Runtime::Inbox {
 };
 struct Runtime::Impl {
   Impl(Config config, State recovered, Persist persist, ApplyCommitted application, Dispatch output,
-      RuntimeOptions options, RuntimeClock time)
+      RuntimeOptions options, RuntimeClock time, ProposalCheck policy)
     : inbox(std::make_shared<Inbox>(options)), clock(clock_or_default(std::move(time))),
       last_time(clock()), core(std::move(config),std::move(recovered),std::move(persist),last_time),
-      apply(std::move(application)), dispatch(std::move(output)) {
+      apply(std::move(application)), dispatch(std::move(output)), check(std::move(policy)) {
     if (!apply || !dispatch) throw std::invalid_argument("runtime requires application and dispatch callbacks");
   }
   ~Impl() { stop(); }
@@ -101,6 +101,14 @@ struct Runtime::Impl {
   EventResult process(const Input& input) {
     const auto time = now(); std::vector<Envelope> effects;
     EventResult result{Completion::processed,{},{},{}};
+    // Deliberately outside the Core ProposalRejected handler: a storage/policy
+    // callback throwing that type is still a fatal callback failure.
+    if (const auto* command = std::get_if<std::string>(&input); command && core.role() == Role::leader && check) {
+      result.policy_rejection = check(core.state(),*command);
+      if (result.policy_rejection) {
+        result.completion = Completion::rejected; publish(); return result;
+      }
+    }
     try {
       if (std::holds_alternative<Tick>(input)) effects = core.tick(time);
       else if (const auto* message = std::get_if<Envelope>(&input)) effects = core.receive(*message,time);
@@ -196,15 +204,16 @@ struct Runtime::Impl {
   Core core;
   ApplyCommitted apply;
   Dispatch dispatch;
+  ProposalCheck check;
   Index applied = 0;
   bool application_started = false;
   std::thread thread;
   std::mutex join_mutex;
 };
 Runtime::Runtime(Config config, State recovered, Persist persist, ApplyCommitted apply, Dispatch dispatch,
-    RuntimeOptions options, RuntimeClock clock)
+    RuntimeOptions options, RuntimeClock clock, ProposalCheck check)
   : impl_(std::make_unique<Impl>(std::move(config),std::move(recovered),std::move(persist),std::move(apply),
-      std::move(dispatch),options,std::move(clock))) { impl_->start(); }
+      std::move(dispatch),options,std::move(clock),std::move(check))) { impl_->start(); }
 Runtime::~Runtime() = default;
 Runtime::Handle Runtime::handle() const { return Handle{impl_->inbox}; }
 RuntimeStatus Runtime::status() const { std::lock_guard lock(impl_->inbox->mutex); return impl_->inbox->status; }
@@ -219,5 +228,10 @@ Ticket Runtime::Handle::propose(std::string command) const {
 }
 Ticket Runtime::Handle::tick() const {
   const auto inbox = inbox_.lock(); return inbox ? inbox->submit(Tick{}) : Ticket{};
+}
+RuntimeStatus Runtime::Handle::status() const {
+  const auto inbox = inbox_.lock();
+  if (!inbox) { RuntimeStatus result; result.stopped = true; return result; }
+  std::lock_guard lock(inbox->mutex); return inbox->status;
 }
 } // namespace rollupx::raft

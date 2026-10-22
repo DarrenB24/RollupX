@@ -36,12 +36,12 @@ struct Harness {
   std::vector<std::thread::id> owners;
   Index applied = 0;
   std::unique_ptr<Runtime> runtime;
-  void start(RuntimeOptions options = manual()) {
+  void start(RuntimeOptions options = manual(), ProposalCheck check = {}) {
     runtime = std::make_unique<Runtime>(raft_config(),disk,[&](const State& state) {
       owners.push_back(std::this_thread::get_id()); disk = state;
     },[&](Index commit) { owners.push_back(std::this_thread::get_id()); applied = commit; return applied; },
     [&](const Envelope& message) { owners.push_back(std::this_thread::get_id()); sent.push_back(message); return true; },
-    options,[&] { return time.load(); });
+    options,[&] { return time.load(); },std::move(check));
   }
   Runtime::Handle handle() { return runtime->handle(); }
   void elect() {
@@ -231,5 +231,35 @@ TEST(RaftRuntime, SharedApplicationReplaysCommittedTransfersAndKeepsRetriesIdemp
   EXPECT_EQ(result.status.applied,5U); runtime.stop();
   EXPECT_EQ(ledger.accounts[0].balance,70U); EXPECT_EQ(ledger.accounts[0].nonce,2U);
   EXPECT_EQ(receipts.size(),3U); EXPECT_EQ(receipts.at(ledger_transaction().id).log_index,2U);
+}
+TEST(RaftRuntime, OwnerPolicyRejectsWithoutPersistenceAndDoesNotRunOnFollowers) {
+  unsigned checks = 0; std::thread::id checked_on;
+  Harness test; test.start(manual(),[&](const State& state, std::string_view command) -> std::optional<std::string> {
+    ++checks; checked_on = std::this_thread::get_id();
+    EXPECT_EQ(state.commit,1U); EXPECT_EQ(command,"command"); return "busy";
+  });
+  EXPECT_EQ(await(test.handle().propose("command")).completion,Completion::rejected); EXPECT_EQ(checks,0U);
+  test.elect(); const auto before = test.disk;
+  const auto result = await(test.handle().propose("command"));
+  EXPECT_EQ(result.completion,Completion::rejected); EXPECT_EQ(result.policy_rejection,"busy");
+  EXPECT_FALSE(result.proposed_index); EXPECT_EQ(test.disk,before); EXPECT_EQ(checks,1U);
+  EXPECT_NE(checked_on,std::this_thread::get_id()); EXPECT_FALSE(test.runtime->status().failed);
+}
+TEST(RaftRuntime, PolicyExceptionsIncludingProposalRejectedAreFatal) {
+  for (bool explicit_rejection : {false,true}) {
+    Harness test; test.start(manual(),[&](const State&, std::string_view) -> std::optional<std::string> {
+      if (explicit_rejection) throw ProposalRejected("storage callback failed");
+      throw std::runtime_error("storage callback failed");
+    }); test.elect();
+    EXPECT_EQ(await(test.handle().propose("command")).completion,Completion::failed);
+    EXPECT_TRUE(test.runtime->status().failed); EXPECT_EQ(test.disk.log.size(),1U);
+    EXPECT_TRUE(test.runtime->failure());
+  }
+}
+TEST(RaftRuntime, ExpiredHandleStatusIsStoppedAndCannotObserveReplacementRuntime) {
+  Runtime::Handle handle;
+  { Harness test; test.start(); handle = test.handle(); EXPECT_FALSE(handle.status().stopped); }
+  Harness replacement; replacement.start();
+  EXPECT_TRUE(handle.status().stopped); EXPECT_FALSE(replacement.handle().status().stopped);
 }
 } // namespace
