@@ -66,7 +66,14 @@ class Mesh : public ::testing::Test {
     for (const auto& c : configs) nodes.push_back(std::make_unique<rollupx::Node>(c));
     ASSERT_TRUE(eventually([&] { return all_ready(); }));
   }
-  bool all_ready() { for (const auto& c : configs) if (!ready(c.public_listen, 4)) return false; return true; }
+  bool all_ready() {
+    for (const auto& c : configs) {
+      if (!ready(c.public_listen, 4)) {
+        return false;
+      }
+    }
+    return true;
+  }
   rollupx::test::Directory directory;
   std::vector<rollupx::Config> configs;
   std::vector<std::unique_ptr<rollupx::Node>> nodes;

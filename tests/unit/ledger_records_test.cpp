@@ -84,7 +84,10 @@ TEST_F(Records, OrderedBatchAndWithinBatchDuplicates) {
 TEST_F(Records, PriorReceiptsDoNotExecuteAgainOrChangeTheirPosition) {
   const auto first = tx(); const auto initial = plan_application(genesis, {0, genesis.accounts}, 1, {1, {first}}, none);
   const auto prior = [&](const Hash& id) -> std::optional<LedgerReceipt> {
-    if (id == first.id) return initial.results[0]; return std::nullopt;
+    if (id == first.id) {
+      return initial.results[0];
+    }
+    return std::nullopt;
   };
   const auto next = plan_application(genesis, initial.state, 2, {2, {first, tx(1)}}, prior);
   EXPECT_EQ(next.results[0], initial.results[0]); EXPECT_EQ(next.new_receipts.size(), 1U);

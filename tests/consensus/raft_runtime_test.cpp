@@ -68,7 +68,11 @@ TEST(RaftRuntime, PersistenceApplicationAndDispatchHaveExactlyOneOwner) {
 TEST(RaftRuntime, UnaryReplyWaitsForPersistenceAndApplication) {
   Gate gate; State disk; std::atomic<Index> applied{0};
   Runtime runtime(raft_config(),{},[&](const State& state) { disk = state; },[&](Index commit) {
-    if (commit == 1) gate.enter(); applied = commit; return commit;
+    if (commit == 1) {
+      gate.enter();
+    }
+    applied = commit;
+    return commit;
   },[](const Envelope&) { return true; },manual());
   auto ticket = runtime.handle().receive({2,1,AppendRequest{1,1,0,0,{{1,"command"}},1}});
   ASSERT_TRUE(gate.wait()); EXPECT_EQ(ticket.result.wait_for(0ms),std::future_status::timeout);
@@ -79,7 +83,12 @@ TEST(RaftRuntime, UnaryReplyWaitsForPersistenceAndApplication) {
 }
 TEST(RaftRuntime, ActiveEventCountsAgainstCapacityAndQueuedCancellationHasNoEffect) {
   Gate gate; State disk;
-  Runtime runtime(raft_config(),{},[&](const State& state) { if (state.term == 1 && !state.voted_for) gate.enter(); disk = state; },
+  Runtime runtime(raft_config(),{},[&](const State& state) {
+    if (state.term == 1 && !state.voted_for) {
+      gate.enter();
+    }
+    disk = state;
+  },
     [](Index commit) { return commit; },[](const Envelope&) { return true; },manual(2));
   auto active = runtime.handle().receive({2,1,VoteRequest{1,0,0}}); ASSERT_TRUE(gate.wait());
   auto pending = runtime.handle().receive({3,1,VoteRequest{2,0,0}}); ASSERT_EQ(pending.admission,Admission::queued);
@@ -147,7 +156,12 @@ TEST(RaftRuntime, AmbiguousPersistenceFailureStopsOwnerAndEmitsNoReply) {
 TEST(RaftRuntime, ApplicationFailureSuppressesAcknowledgmentAfterCommit) {
   State disk;
   Runtime runtime(raft_config(),{},[&](const State& state) { disk = state; },
-    [](Index commit) -> Index { if (commit) throw std::runtime_error("apply failed"); return 0; },
+    [](Index commit) -> Index {
+      if (commit) {
+        throw std::runtime_error("apply failed");
+      }
+      return 0;
+    },
     [](const Envelope&) { return true; },manual());
   const auto result = await(runtime.handle().receive({2,1,AppendRequest{1,1,0,0,{{1,"command"}},1}}));
   EXPECT_EQ(result.completion,Completion::failed); EXPECT_FALSE(result.reply);
@@ -170,7 +184,12 @@ TEST(RaftRuntime, TransportBackpressureIsCountedAndDispatchExceptionsFailClosed)
   for (const bool throwing : {false,true}) {
     std::atomic<Millis> time{0};
     Runtime runtime(raft_config(),{},[](const State&) {},[](Index commit) { return commit; },
-      [throwing](const Envelope&) { if (throwing) throw std::runtime_error("driver failure"); return false; },
+      [throwing](const Envelope&) {
+        if (throwing) {
+          throw std::runtime_error("driver failure");
+        }
+        return false;
+      },
       manual(),[&] { return time.load(); });
     time = 600; const auto result = await(runtime.handle().tick());
     EXPECT_EQ(result.completion,throwing ? Completion::failed : Completion::processed);
@@ -204,7 +223,12 @@ TEST(RaftRuntime, OwnerCanRequestShutdownButCannotJoinItself) {
   for (const bool join : {false,true}) {
     Runtime* current = nullptr; std::atomic<Millis> time{0};
     Runtime runtime(raft_config(),{},[](const State&) {},[](Index commit) { return commit; },[&](const Envelope&) {
-      if (join) current->stop(); else current->request_stop(); return true;
+      if (join) {
+        current->stop();
+      } else {
+        current->request_stop();
+      }
+      return true;
     },manual(),[&] { return time.load(); });
     current = &runtime; time = 600;
     EXPECT_EQ(await(runtime.handle().tick()).completion,join ? Completion::failed : Completion::processed);

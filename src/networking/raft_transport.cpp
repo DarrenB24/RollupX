@@ -23,7 +23,10 @@ struct PeerDispatcher::Impl {
   void halt() {
     {
       std::lock_guard lock(mutex); stats.stopped = true;
-      for (auto& peer : peers) peer.pending.reset(); stats.queued = 0;
+      for (auto& peer : peers) {
+        peer.pending.reset();
+      }
+      stats.queued = 0;
     }
     // Stop callbacks may acquire their own/our mutexes. Never invoke them locked.
     cancellation.request_stop(); wake.notify_all(); idle.notify_all();

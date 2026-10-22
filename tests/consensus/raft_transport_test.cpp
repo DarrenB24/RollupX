@@ -128,7 +128,12 @@ TEST(RaftIngress, ValidRequestAppliesAndMalformedOrExpiredRequestsHaveNoEffect) 
 }
 TEST(RaftIngress, ActiveCallLimitAndCloseDoNotAcknowledgeAnUnfinishedApplication) {
   Gate gate; auto config = raft_config(); config.id = 2;
-  Runtime runtime(config,{},[](const State&) {},[&](Index commit) { if (commit) gate.enter(); return commit; },
+  Runtime runtime(config,{},[](const State&) {},[&](Index commit) {
+    if (commit) {
+      gate.enter();
+    }
+    return commit;
+  },
     [](const Envelope&) { return true; },manual());
   RaftIngress ingress(codec(2),runtime.handle(),{1,2s,1ms});
   const auto request = codec(1).encode_request({1,2,AppendRequest{1,1,0,0,{{1,"command"}},1}});

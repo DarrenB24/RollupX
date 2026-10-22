@@ -681,3 +681,38 @@ the callback durability/lifetime contract, result semantics, and remaining wirin
 CI YAML parsing and `git diff --check` passed. Commit/push was attempted, but
 staging failed with `.git/index.lock: Operation not permitted`. No commit or push
 ran; all changes remain saved locally above `9c23600`.
+
+## CI repair: GCC control-flow warnings (2026-10-22)
+
+Inspected GitHub Actions run `39851008411` for commit `c0ef73b` through the user's
+open browser after the GitHub CLI failed to connect. Two compiler blockers were
+confirmed directly in the job logs:
+
+- `build-and-test (OFF)`, job `120076839671`: GCC reports
+  `-Werror=misleading-indentation` at `raft_transport.cpp:26`, where a loop and an
+  unconditional queue-counter reset shared a line.
+- `offline-core (ON)`, job `120076839830`: the same error at
+  `ledger_records_test.cpp:87`, where conditional and unconditional returns shared
+  a line. This prevents tests from starting; dependency installation succeeded.
+
+The run's Clang TSan job succeeded. The screenshot also shows cancelled matrix
+siblings; cancelled jobs are not additional failing test cases. Other job logs
+have not been individually verified.
+
+Added explicit control-flow braces at both confirmed failures and similar
+multi-statement guards in runtime/transport tests, the network readiness test, and
+the standalone store read helper. No consensus/execution behavior or warning flags
+were changed. CI now retains compiler/Compose logs as artifacts and disables
+matrix fail-fast so every variant can finish and report its own errors. Explicit
+Bash execution preserves pipeline failure status when build output is saved by tee.
+
+Local verification after the changes: all ten wire-tier CTest entries pass in
+Debug and ASan/UBSan (150 GoogleTests plus configuration and CLI smoke checks).
+All 45 runtime/submission/transport cases pass under TSan. CI YAML/matrix settings
+and `git diff --check` pass. GCC, gRPC, RocksDB, and Docker are not available for
+local reproduction of the entire Ubuntu workflow; the corrected commit must run
+in GitHub Actions before the workflow can be declared green. Native dependency
+runtime acceptance gates remain open.
+
+Commit/push was attempted, but `git add` failed with `.git/index.lock: Operation
+not permitted`. No commit or push ran; repairs remain saved above `c0ef73b`.

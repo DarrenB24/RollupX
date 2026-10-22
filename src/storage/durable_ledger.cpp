@@ -67,7 +67,11 @@ struct DurableLedger::Impl {
     checked(status, "read ledger"); return value;
   }
   std::string require(const std::string& key) const {
-    const auto value = get(key); if (!value) throw std::runtime_error("missing required ledger key: " + key); return *value;
+    const auto value = get(key);
+    if (!value) {
+      throw std::runtime_error("missing required ledger key: " + key);
+    }
+    return *value;
   }
   void sync(rocksdb::WriteBatch& write) {
     rocksdb::WriteOptions options; options.sync = true; options.disableWAL = false;
