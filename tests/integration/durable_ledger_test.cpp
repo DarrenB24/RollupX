@@ -56,7 +56,7 @@ TEST(DurableLedger, FailedCommitOutcomeRequiresReopenAndReplays) {
       if (point == LedgerCrashPoint::after_commit) throw std::runtime_error("injected interruption");
     });
     EXPECT_THROW(ledger.submit(transaction), std::runtime_error);
-    EXPECT_THROW(ledger.snapshot(), std::runtime_error);
+    EXPECT_THROW((void)ledger.snapshot(), std::runtime_error);
     EXPECT_THROW(ledger.submit(transaction), std::runtime_error);
   }
   DurableLedger recovered(directory.path, genesis);

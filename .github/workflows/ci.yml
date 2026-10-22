@@ -13,7 +13,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install runtime and transport race-test dependencies
-        run: sudo apt-get update && sudo apt-get install -y clang cmake ninja-build libssl-dev libgtest-dev libprotobuf-dev protobuf-compiler
+        run: bash scripts/install-ci-deps.sh clang cmake ninja-build libssl-dev libgtest-dev libprotobuf-dev protobuf-compiler
       - name: Build and test runtime, submission, and peer dispatch with ThreadSanitizer
         run: |
           cmake -S . -B build-tsan -G Ninja -DCMAKE_CXX_COMPILER=clang++ -DROLLUPX_WIRE_ONLY=ON -DROLLUPX_TSAN=ON -DCMAKE_BUILD_TYPE=Debug
@@ -36,7 +36,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install real gRPC transport dependencies
-        run: sudo apt-get update && sudo apt-get install -y cmake ninja-build libssl-dev libgtest-dev libgrpc++-dev libprotobuf-dev protobuf-compiler protobuf-compiler-grpc
+        run: bash scripts/install-ci-deps.sh cmake ninja-build libssl-dev libgtest-dev libgrpc++-dev libprotobuf-dev protobuf-compiler protobuf-compiler-grpc
       - name: Build and test socket transport without RocksDB
         run: |
           cmake -S . -B build-transport -G Ninja -DROLLUPX_TRANSPORT_ONLY=ON -DCMAKE_BUILD_TYPE=Debug -DROLLUPX_SANITIZE=${{ matrix.sanitize }}
@@ -59,7 +59,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install protobuf and offline-core dependencies
-        run: sudo apt-get update && sudo apt-get install -y cmake ninja-build libssl-dev libgtest-dev libprotobuf-dev protobuf-compiler
+        run: bash scripts/install-ci-deps.sh cmake ninja-build libssl-dev libgtest-dev libprotobuf-dev protobuf-compiler
       - name: Build and test real protobuf validation without gRPC or RocksDB
         run: |
           cmake -S . -B build-wire -G Ninja -DROLLUPX_WIRE_ONLY=ON -DCMAKE_BUILD_TYPE=Debug -DROLLUPX_SANITIZE=${{ matrix.sanitize }}
@@ -82,7 +82,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install real RocksDB and test dependencies
-        run: sudo apt-get update && sudo apt-get install -y cmake ninja-build librocksdb-dev libssl-dev libgtest-dev
+        run: bash scripts/install-ci-deps.sh cmake ninja-build librocksdb-dev libssl-dev libgtest-dev
       - name: Build standalone ledger without gRPC
         run: |
           cmake -S . -B build-ledger -G Ninja -DROLLUPX_LEDGER_ONLY=ON -DCMAKE_BUILD_TYPE=Debug -DROLLUPX_SANITIZE=${{ matrix.sanitize }}
@@ -106,7 +106,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install offline-core dependencies
-        run: sudo apt-get update && sudo apt-get install -y cmake ninja-build libssl-dev libgtest-dev
+        run: bash scripts/install-ci-deps.sh cmake ninja-build libssl-dev libgtest-dev
       - name: Build crypto and reference execution without networking/storage dependencies
         run: |
           cmake -S . -B build-core -G Ninja -DCMAKE_BUILD_TYPE=Debug -DROLLUPX_CORE_ONLY=ON -DROLLUPX_SANITIZE=${{ matrix.sanitize }}
@@ -130,9 +130,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install native dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y cmake ninja-build libgrpc++-dev libprotobuf-dev protobuf-compiler protobuf-compiler-grpc librocksdb-dev libssl-dev libgtest-dev
+        run: bash scripts/install-ci-deps.sh cmake ninja-build libgrpc++-dev libprotobuf-dev protobuf-compiler protobuf-compiler-grpc librocksdb-dev libssl-dev libgtest-dev
       - name: Configure
         run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DROLLUPX_SANITIZE=${{ matrix.sanitize }}
       - name: Compile
