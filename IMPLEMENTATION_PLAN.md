@@ -783,3 +783,20 @@ Snapshot creation/install/compaction, controlled real-process partition/delay
 schedules, and exhaustive history verification remain open. The log is bounded
 at 4096 entries/8 MiB. No throughput benchmark, Merkle proof, settlement, replicated
 Compose deployment, or Kubernetes acceptance is claimed by this increment.
+
+## CI repair: conditional GoogleTest assertion (2026-10-23)
+
+Inspected failed logs from GitHub Actions run
+[40002254277](https://github.com/DarrenB24/RollupX/actions/runs/40002254277) for
+`ba8ff38`. Both full-build variants and Compose fail during compilation of
+`tests/integration/replicated_node_test.cpp:113`: GCC reports
+`-Werror=dangling-else` on the unbraced conditional `EXPECT_EQ` assertion. All three
+jobs report the same source error; this is not a sanitizer runtime failure.
+
+Added explicit braces around the conditional assertion, its neighboring assertion
+branch, and the retry assertion loop. Warning flags and runtime behavior are
+unchanged. The affected executable rebuilds and all four replicated-node cases
+pass in Debug (11.00 seconds) and ASan/UBSan (10.77 seconds). `git diff --check`
+passes. GCC/Docker are not installed locally, so the corrected commit must run in
+Ubuntu CI before the failed jobs can be declared green. The fix is saved locally;
+no commit or push was performed in this repair.

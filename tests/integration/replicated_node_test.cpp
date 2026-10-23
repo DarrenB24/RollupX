@@ -110,10 +110,13 @@ TEST_F(ReplicatedCluster, SignedTransferConcurrentRetriesQueriesAndFullRestart) 
   for (auto& call : initial) {
     const auto [result,receipt] = call.get();
     if (result.ok()) {
-      if (confirmed.state() != v1::Receipt::STATE_UNSPECIFIED)
+      if (confirmed.state() != v1::Receipt::STATE_UNSPECIFIED) {
         EXPECT_EQ(receipt.SerializeAsString(),confirmed.SerializeAsString());
+      }
       confirmed = receipt;
-    } else EXPECT_EQ(result.error_code(),grpc::StatusCode::RESOURCE_EXHAUSTED);
+    } else {
+      EXPECT_EQ(result.error_code(),grpc::StatusCode::RESOURCE_EXHAUSTED);
+    }
   }
   ASSERT_EQ(confirmed.state(),v1::Receipt::APPLIED);
   EXPECT_GT(confirmed.log_index(),1U); // Election no-op is never a transfer batch.
@@ -122,7 +125,9 @@ TEST_F(ReplicatedCluster, SignedTransferConcurrentRetriesQueriesAndFullRestart) 
   for (std::size_t i = 0; i < nodes.size(); ++i) retries.push_back(std::async(std::launch::async,[&,i] {
     v1::Receipt receipt; return submit(i,transaction,receipt).ok() && receipt.SerializeAsString() == confirmed.SerializeAsString();
   }));
-  for (auto& retry : retries) EXPECT_TRUE(retry.get());
+  for (auto& retry : retries) {
+    EXPECT_TRUE(retry.get());
+  }
   check_accounts(90,1,confirmed.log_index());
   for (std::size_t i = 0; i < nodes.size(); ++i) {
     v1::BatchRequest request; request.set_number(confirmed.log_index());
