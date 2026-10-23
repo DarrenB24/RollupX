@@ -2,10 +2,10 @@
 
 ## Status and build
 
-Versioned state records and transition validation are compiled and tested offline.
-The real RocksDB `raft::Store` adapter and its database/process-kill tests are
-implemented as source, but **have not been compiled against RocksDB or run on the current host**
-because RocksDB is missing. The running node still does not expose Raft consensus.
+Versioned state records, transition validation, the RocksDB `raft::Store`, and
+its database/process-kill tests pass in native builds. The
+[replicated node](replicated-node.md) uses this store for both consensus and
+application state and verifies signed transfers through real gRPC sockets.
 
 The existing ledger build tier now builds both storage adapters and their tests:
 
@@ -19,7 +19,7 @@ ctest --test-dir build-ledger --output-on-failure -R '^raft_store_tests$'
 ```
 
 No listening socket is required. The standalone-ledger CI matrix runs this suite
-with and without ASan/UBSan; remote CI has not run from this environment.
+with and without ASan/UBSan; both passed in the recorded main-branch CI.
 `ROLLUPX_CORE_ONLY` includes the record tests and protocol simulations, without
 pretending the database tests passed.
 
@@ -147,13 +147,13 @@ commit, and suffix replacement. Each of the ten cases reopens twice and checks a
 exact pre-write or post-write image; a persisted vote cannot be granted to another
 candidate. Workers have explicit termination deadlines and missed hooks fail.
 
-These real storage tests remain unverified. They test process interruption around
+These verified storage tests exercise process interruption around
 synchronous writes, not power loss or interruption inside RocksDB's WAL recovery.
 Initialization crash points, checkpoints, snapshots, and compaction are pending.
 The ledger-enabled store now includes accounts, receipts, applied progress, startup
 audit/replay, and separate database/application-kill tests as described in
-[committed application](raft-application.md). Next verify real storage and connect
-the gRPC driver before claiming durable replicated transfers.
+[committed application](raft-application.md). The gRPC driver and five-process
+crash recovery now have native verification; snapshot recovery remains pending.
 Two additional ledger database tests check named identity retention through replay,
 rename/downgrade rejection, and refusal to silently upgrade a numeric-only store.
-Their source passes syntax checking; actual RocksDB execution remains pending.
+These tests also pass against real RocksDB.

@@ -3,9 +3,9 @@
 The transport connects the [single-owner runtime](raft-runtime.md) to the
 [identity-bound wire codec](raft-wire.md). Peer scheduling and ingress handling
 are verified locally with real threads and generated Protobuf messages. The gRPC
-client/service and socket tests are implemented but have not compiled or run on
-the development host, which lacks gRPC. The existing `rollupx-node` still runs the
-networking foundation; it does not instantiate this replicated-ledger driver.
+client/service and socket tests pass on native builds. The optional
+[replicated node](replicated-node.md) composes this transport with its durable
+ledger and public transaction APIs.
 
 ## Ownership and startup
 
@@ -14,8 +14,8 @@ validated requests through a weak runtime handle and waits for its result.
 Neither accesses Core or the database directly. The runtime owner remains the
 only thread that persists consensus state and applies committed entries.
 
-A future node driver must open/audit its named store, validate its config and
-endpoint mapping against that same manifest, then construct components in this
+The node driver opens/audits its named store, validates its config and
+endpoint mapping against that same manifest, then constructs components in this
 order:
 
 1. `GrpcRaftClient(manifest, remote_endpoints)` and `PeerDispatcher(codec, call)`.
@@ -69,7 +69,7 @@ rollback. The caller retries using the existing Raft request semantics.
 A successful unary response is available only after the owner's required durable
 persistence and committed application callbacks complete. A storage failure yields
 an explicit error and no successful acknowledgment. Actual durability depends on
-the real store callback, whose execution gate remains pending on this host.
+the real store callback, verified by native persistence and crash tests.
 
 ## gRPC adapter
 
@@ -129,6 +129,7 @@ ctest --test-dir build-transport --output-on-failure
 Four socket tests cover actual vote/append RPCs, malformed identities, unsupported
 snapshots, expired/cancelled/closed calls, and endpoint mapping. They require successful
 socket binding and fail rather than skip when unavailable. CI is configured to run
-this tier normally and with ASan/UBSan; remote results have not been observed.
-Real RocksDB recovery, node-driver integration, five-process fault tests, snapshots,
-and public transaction APIs remain acceptance gates before performance work.
+this tier normally and with ASan/UBSan; both passed in the recorded main-branch CI.
+Native node tests now exercise RocksDB, public transactions, and five-process
+crash recovery. Snapshots and broader process partition/delay scenarios remain
+acceptance gates before performance work.

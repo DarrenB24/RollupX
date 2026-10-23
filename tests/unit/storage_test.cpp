@@ -1,3 +1,4 @@
+#include "rollupx/rocksdb_open.hpp"
 #include "../test_support.hpp"
 #include "rollupx/identity_store.hpp"
 #include <gtest/gtest.h>
@@ -30,9 +31,8 @@ TEST(Storage, ExclusiveOwnership) {
 TEST(Storage, NonemptyDatabaseWithoutManifestIsNotReinitialized) {
   rollupx::test::Directory directory;
   rocksdb::Options options; options.create_if_missing = true;
-  rocksdb::DB* output = nullptr;
-  ASSERT_TRUE(rocksdb::DB::Open(options, directory.path, &output).ok());
-  std::unique_ptr<rocksdb::DB> db(output);
+  std::unique_ptr<rocksdb::DB> db;
+  ASSERT_TRUE(rollupx::open_rocksdb(options, directory.path, db).ok());
   ASSERT_TRUE(db->Put(rocksdb::WriteOptions{}, "unexpected", "data").ok()); db.reset();
   EXPECT_THROW({ rollupx::IdentityStore store(rollupx::test::config(directory.path)); }, std::runtime_error);
 }

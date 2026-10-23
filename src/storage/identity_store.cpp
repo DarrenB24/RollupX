@@ -1,3 +1,4 @@
+#include "rollupx/rocksdb_open.hpp"
 #include "rollupx/identity_store.hpp"
 #include <filesystem>
 #include <rocksdb/iterator.h>
@@ -14,9 +15,7 @@ IdentityStore::IdentityStore(const Config& config) {
   options.max_open_files = 128;
   options.write_buffer_size = 4 * 1024 * 1024;
   options.max_write_buffer_number = 2;
-  rocksdb::DB* opened = nullptr; // RocksDB's output parameter transfers ownership immediately.
-  const auto status = rocksdb::DB::Open(options, config.data_dir, &opened);
-  db_.reset(opened);
+  const auto status = open_rocksdb(options, config.data_dir, db_);
   if (!status.ok()) throw std::runtime_error("RocksDB open: " + status.ToString());
   std::string identity;
   const auto read = db_->Get(rocksdb::ReadOptions{}, "meta/identity", &identity);

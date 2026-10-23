@@ -2,15 +2,11 @@
 
 ## Status and build
 
-The RocksDB adapter, standalone CLI, and real-database test suite are implemented
-as source. **The initial host still lacks RocksDB, so they have not been linked
-or run here.** Shared record codecs, application planning, and recovery-state
-validation passed offline tests, including ASan/UBSan. Those tests do not establish
-disk durability; no storage milestone is accepted yet.
-
-This is an explicit development ledger, not a consensus node. No public gRPC
-mutation was enabled. Its `meta/identity` is `rollupx-standalone-ledger-v1`,
-deliberately incompatible with the Phase 1 node manifest.
+The RocksDB adapter, standalone CLI, database recovery and process-kill tests
+pass in native builds and the recorded main-branch CI. The standalone ledger
+remains an explicit development tool with direct local commitment. Its manifest
+is deliberately incompatible with the networking and replicated-node stores.
+The [replicated node](replicated-node.md) uses `raft::Store` instead of this adapter.
 
 On Ubuntu 24.04:
 
@@ -24,7 +20,8 @@ ctest --test-dir build-ledger --output-on-failure
 The separate `standalone-ledger` CI job runs these commands normally and with
 ASan/UBSan. It needs no gRPC or listening sockets. The full build includes the
 same tests. Missing RocksDB fails configuration; there is no fallback persistence
-implementation or simulated passing database test. CI has not run remotely here.
+implementation or simulated passing database test. Native CI execution is recorded
+in IMPLEMENTATION_PLAN.md.
 
 ## CLI workflow
 
@@ -152,8 +149,7 @@ termination time. Another case kills successive processes during replay before a
 after the atomic application write. This tests application recovery; it does not
 yet interrupt RocksDB's internal WAL recovery or emulate controller/power failure.
 
-All database/process tests remain unverified on this host. Phase 1 networking,
-cluster query integration, Raft, snapshots, Merkle state
-commitments, and settlement also remain pending. The standalone command is never
-a nonconsensus write path in the five-node deployment.
+Native database/process tests and replicated public query integration now pass.
+Snapshots, Merkle state commitments, and settlement remain pending. The standalone
+command is never a nonconsensus write path in the five-node deployment.
 Protobuf field validation is independently tested; see [transaction-wire.md](transaction-wire.md).

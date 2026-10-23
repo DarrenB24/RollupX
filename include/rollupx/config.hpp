@@ -15,6 +15,8 @@ struct Config {
   std::string http_listen = "127.0.0.1:9100";
   std::string data_dir;
   std::vector<Peer> peers; // Includes this node, stable on every member.
+  std::string genesis_file; // Explicit opt-in to the replicated ledger.
+  std::vector<Peer> public_peers; // Ledger-mode leader discovery, same member IDs.
   std::chrono::milliseconds probe_interval{200};
   std::chrono::milliseconds rpc_timeout{150};
   std::chrono::milliseconds peer_stale_after{1500};

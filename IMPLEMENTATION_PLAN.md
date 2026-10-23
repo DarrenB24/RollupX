@@ -6,35 +6,33 @@ Work in phase order; compile and run relevant tests before promoting a milestone
 Never return placeholder success for absent consensus, execution, or settlement.
 This plan is the status ledger; design documents describe future behavior.
 
-### Current next steps (2026-10-22)
+### Current next steps (2026-10-23)
 
-The latest verified increment is the owner-thread transfer admission and durable
-receipt confirmation bridge, including threaded five-replica submission/retries.
+The native dependency gate is verified: main-branch CI run `39860618296` for
+`1a14d01` passed full gRPC/RocksDB, storage crash/recovery, transport, sanitizer,
+and Compose networking tests. Its logs were retrieved and inspected on 2026-10-23.
+The replicated node now composes one audited store, runtime and transport identity,
+exposes durable submission/query APIs, and passes native five-process signed
+transfer, retry, leader/follower crash, catch-up and full restart tests locally.
 The full rollup is not complete. Remaining work, in dependency order:
 
-1. **Unblock native integration:** build/run gRPC transport and RocksDB ledger/Raft
-   suites on a dependency-equipped host. Verify sync-write recovery and actual
-   sockets; CI configuration alone is not evidence. Current host cannot resolve
-   GitHub for downloads and lacks both dependency configurations.
-2. **Compose the replicated node:** use one audited Store/Runtime/transport identity,
-   install the admission policy and confirmation bridge, expose durable transaction,
-   balance/nonce/batch and leader queries, and wire readiness/failure shutdown.
-   Acceptance: signed client transfer produces an applied receipt on the five-node
-   cluster with identical balances/nonces and idempotent retries.
-3. **Complete consensus recovery:** run real five-process leader/follower kill,
-   restart, partition, delayed-message and duplicate-submission tests; implement
-   snapshot creation/install/compaction with crash-safe publication. Acceptance:
-   committed prefixes never conflict and committed transfers survive recovery.
-4. **Build and measure the pipeline:** bounded mempool, validation workers, batching,
+1. **Complete consensus recovery:** implement snapshot creation/install/compaction
+   with crash-safe publication; extend real process testing to controlled network
+   partitions, delays, duplicate traffic and interrupted snapshot installation.
+   The log is still bounded to 4096 entries/8 MiB. Current crash tests do not prove
+   power-loss durability or exhaustive distributed safety.
+2. **Build and measure the pipeline:** bounded mempool, validation workers, batching,
    configurable C++ load generator, committed TPS and applied-receipt latency
-   reports, replication/storage metrics, and batching comparisons. Optimize only
-   after native replicated-ledger tests pass.
-5. **Add verifiable settlement:** transaction/account Merkle trees and proof APIs,
+   reports, replication/storage metrics, and batching comparisons.
+3. **Add verifiable settlement:** transaction/account Merkle trees and proof APIs,
    state/batch commitments, data availability, Solidity fraud challenges, and
    Foundry/Anvil end-to-end tests. No unsupported-accusation challenge shortcut.
-6. **Finish deployment and acceptance:** verified five-node Compose fault demos,
-   Anvil/monitoring services, Grafana dashboard coverage, then Kubernetes with
-   persistent volumes. Complete CI and document measured performance/limitations.
+4. **Finish deployment and acceptance:** replicated five-node Compose fault demos,
+   Anvil/monitoring services, Grafana coverage, then Kubernetes with persistent
+   volumes. The current Compose services remain networking-only diagnostics.
+
+See the latest verification entry below and docs/replicated-node.md. Earlier dated
+blocker entries are historical; they do not override the current verification.
 
 Initial inspection (2026-10-09): empty directory, Apple Clang 21 and OpenSSL 3
 installed. No CMake, Ninja, protoc, gRPC, RocksDB, GoogleTest, Docker, forge, or
@@ -53,11 +51,11 @@ AGENTS.md was found. Work is restricted to the workspace and temporary directori
 Acceptance: documents distinguish target design from implemented behavior and
 identify major persistence, determinism, and fraud-verification risks.
 
-## Phase 1 — project foundation (depends on Phase 0; source written, gate blocked)
+## Phase 1 — project foundation (native and Compose transport gate verified)
 
-The checked items below indicate implementation source exists. Runtime verification
-is recorded separately; this phase is **not accepted** until the full build and
-five-node tests pass.
+Native build, gRPC/RocksDB suites, five-process mesh, and Compose transport/restart
+passed in the recorded main-branch CI run. Local full native verification is also
+available following dependency installation on 2026-10-23.
 
 - [x] C++20 CMake targets, strict warnings, sanitizers, dependency discovery.
 - [x] Documented protobuf transaction/public API/internal protocol schemas.
@@ -68,8 +66,8 @@ five-node tests pass.
 - [x] CLI connectivity/status commands; missing ledger methods fail explicitly.
 - [x] GoogleTest config/storage/network tests, including five-node mesh and restart.
 - [x] Five independent Docker services/volumes and reproducible smoke script.
-- [x] CI build/unit/integration/sanitizer jobs (configured, not run remotely).
-- [ ] Verify full CMake build and five processes exchanging gRPC messages.
+- [x] CI build/unit/integration/sanitizer jobs (verified for the recorded main commit).
+- [x] Verify full CMake build and five processes exchanging gRPC messages.
 
 Acceptance: all five processes observe the other four through actual gRPC; wrong
 cluster/membership is rejected; deadlines bound unavailable peers; restart retains
@@ -77,11 +75,11 @@ identity and rejects mismatched reuse; ports shut down cleanly. Full dependency
 tests must pass before Phase 1 is claimed complete. A dependency-free validation
 path may verify portable modules but is not a substitute for networking tests.
 
-## Phase 2 — transaction engine (offline core underway; durable acceptance pending)
+## Phase 2 — transaction engine (native durable and replicated API tests verified)
 
-On the user's continuation request, independently testable offline components were
-implemented while Phase 1 networking remains blocked. This advances the transaction
-core without enabling cluster writes or claiming either milestone fully accepted.
+The offline core now runs behind the replicated public API. Native database,
+application/crash, signed five-process transfer and idempotent retry tests pass.
+Local read semantics and ambiguity after submission errors are documented.
 
 - [x] Golden canonical payload/ID/signature vectors and Ethereum Keccak verification.
 - [x] OpenSSL secp256k1 signing, public-key recovery, strict low-s validation.
@@ -90,13 +88,13 @@ core without enabling cluster writes or claiming either milestone fully accepted
 - [x] Offline wallet account generation, signing, and verification.
 - [x] Persistence codecs, bounded application planner, recovery-state checks.
 - [x] Shared streaming startup audit and exhaustive small-history recovery-boundary tests.
-- [x] Standalone RocksDB ledger and query CLI source (not built against RocksDB yet).
+- [x] Standalone RocksDB ledger and query CLI (native tests verified).
 - [x] Real RocksDB reopen/concurrent-duplicate/corruption and SIGKILL test source.
-- [ ] RocksDB atomic batch execution, receipts, durable IDs, applied marker.
-- [ ] Retry semantics, concurrent duplicate admission, deterministic rejection.
+- [x] RocksDB atomic batch execution, receipts, durable IDs, applied marker.
+- [x] Retry semantics, concurrent duplicate admission, deterministic rejection.
 - [x] Generated-protobuf field validation and authenticated offline wire conversion.
-- [ ] Durable network query APIs and replicated transaction admission.
-- [ ] Process-kill hooks before/after storage effects and replay tests.
+- [x] Durable network query APIs and replicated transaction admission.
+- [x] Process-kill hooks before/after storage effects and replay tests.
 
 Acceptance: valid transfers durable across restart, bad signature/nonce/chain,
 overspend/overflow/self-transfer/unknown account rejected, supply conserved, no
@@ -105,22 +103,22 @@ enable non-consensus writes in cluster mode.
 
 ## Phase 3 — consensus (depends on Phase 2)
 
-The isolated protocol core can be tested while earlier runtime gates are blocked.
-Cluster integration and phase acceptance still depend on verified durable execution.
+Native storage/transport integration and basic process fault recovery are verified.
+This phase remains open for snapshots and broader partition/delay recovery tests.
 
 - [x] Deterministic Raft core/clock/transport effect interfaces and simulation tests.
 - [x] Protocol-level elections, log repair, majority rule, no-op barrier and check-quorum.
 - [x] Five-node simulated faults and independent committed signed-transfer execution.
 - [x] Versioned identity-bound Raft records and shared persistence transition validation.
-- [x] RocksDB Raft store and real-database/SIGKILL test source (runtime gate blocked).
+- [x] RocksDB Raft store and real-database/SIGKILL tests (native execution verified).
 - [x] Authenticated Raft transfer commands, ordered application planner, no-op progress,
       first-receipt audit, and independent simulated replica application.
 - [x] Atomic RocksDB application/replay and database/process-kill test source
-      (real storage compilation and execution still blocked).
+      (native compilation and execution verified).
 - [x] Bounded generated-Protobuf Raft codec, configuration/route checks, original
       request correlation, and serialized five-node application/fault simulations.
 - [x] Versioned named membership mapping bound to Raft records and wire identity;
-      real-database reopen tests implemented, awaiting execution.
+      real-database reopen tests verified.
 - [x] Bounded single-owner runtime, automatic ticks, cancellation, weak callback
       handles, fail-stop behavior, shutdown/join, and concurrent producer tests.
 - [x] Bounded peer workers/ingress, deadline/cancellation handling, and threaded
@@ -128,10 +126,10 @@ Cluster integration and phase acceptance still depend on verified durable execut
 - [x] gRPC service/client adapter and loopback test source; transport-only CMake/CI tier.
 - [x] Owner-thread single-transfer admission, bounded durable-receipt confirmation,
       and concurrent retry tests with five threaded replicas (memory-backed).
-- [ ] Compile/run actual gRPC adapter; node-driver and public ledger integration.
-- [ ] Election/vote persistence, randomized timeouts, term handling and heartbeats.
-- [ ] Durable append/conflict repair, per-peer progress, current-term commit rule.
-- [ ] Ordered committed application, leader hints, check-quorum, no-op barrier.
+- [x] Compile/run actual gRPC adapter; node-driver and public ledger integration.
+- [x] Election/vote persistence, randomized timeouts, term handling and heartbeats.
+- [x] Durable append/conflict repair, per-peer progress, current-term commit rule.
+- [x] Ordered committed application, leader hints, check-quorum, no-op barrier.
 - [ ] Recovery validation/replay, restart catch-up, storage error fail-stop.
 - [ ] Checksummed snapshots, staged install, atomic publication, safe compaction.
 - [ ] Five-process crash/partition/delay scenarios and history/root comparison.
@@ -716,3 +714,72 @@ runtime acceptance gates remain open.
 
 Commit/push was attempted, but `git add` failed with `.git/index.lock: Operation
 not permitted`. No commit or push ran; repairs remain saved above `c0ef73b`.
+
+## Replicated public node and native recovery verification (2026-10-23)
+
+Inspected the complete logs of main-branch GitHub Actions run
+[39860618296](https://github.com/DarrenB24/RollupX/actions/runs/39860618296), commit
+`1a14d01`. Both full-build variants passed all 17 then-existing CTest entries;
+both native gRPC tiers passed 11, both standalone-ledger tiers passed nine, and
+wire/core/TSan plus the Compose transport crash/restart job succeeded. This closes
+the earlier native dependency gate. Those results cover the prior commit, not the
+new local integration described below.
+
+Implemented optional `--genesis FILE --public-peers ...` ledger mode. A single
+`ReplicatedNode` composes the audited named `raft::Store`, gRPC client/dispatcher,
+owner runtime, ingress, admission policy and durable receipt bridge. Genesis is
+bounded and validated; public routing must cover the same membership. Networking,
+standalone and replicated database formats cannot be silently interchanged.
+
+The public service implements authenticated submission, durable receipt lookup,
+local balance/nonce snapshots with applied indices, applied batch/block queries,
+and leader discovery with public endpoints. Query corruption/IO failures stop the
+node; input errors stay nonfatal. Admission rejection has no durable receipt;
+timeout/cancellation/leadership loss can be ambiguous after append. Clients retry
+the same transaction ID. Proof and snapshot calls remain UNIMPLEMENTED, and batch
+roots remain absent. Read APIs are explicitly local, not linearizable.
+
+Status and metrics expose role, term, leader, commit/applied progress and leader
+readiness after its current-term barrier. Full-mesh transport observation remains
+separate from quorum/write readiness. Shutdown closes waiting calls and requests
+runtime/transport cancellation before draining handlers and joining callbacks.
+The CLI now supports leader, submit, receipt, balance, nonce and batch commands.
+
+Added four native five-node integration tests covering simultaneous first
+submissions, follower retries, receipt/balance/nonce agreement, batch and leader
+queries, full reopen, majority progress after leader/follower loss, minority
+refusal, catch-up, malformed/state-invalid submissions, missing queries,
+unsupported proofs, and genesis/mode mismatch. Added configuration coverage for
+public routing. `five_process_ledger` runs actual node executables and verifies
+signed transfers, exact retries, SIGKILL of the leader plus one follower, continued
+majority commitment, restarted-node catch-up, then SIGKILL/reopen of all five
+stores with unchanged durable receipts and balances/nonces.
+
+Installed Homebrew native dependencies and compiled locally with Apple Clang 21.
+Added an ownership-safe RocksDB open adapter supporting both the legacy raw-output
+API and the current owning-output API, plus a macOS gRPC deadline duration fix.
+The default static RocksDB path remains the Ubuntu CI configuration. A selectable
+shared RocksDB target supports local sanitizer builds.
+
+Verification:
+
+- Full Debug build and all **19 CTest entries passed** (69.34 seconds). After
+  tightening readiness snapshot consistency and concurrent first-submission
+  coverage, both affected network test executables passed again (17.01 seconds).
+- Full **ASan/UBSan build and all 19 CTest entries passed** (76.87 seconds), including
+  native storage/SIGKILL, gRPC, replicated-node, and five-process ledger tests.
+- The initial macOS sanitizer run with prebuilt static archives failed in mixed
+  container/template code, including existing storage and gRPC tests. The passing
+  run links shared RocksDB 11.8.1 and a locally rebuilt, sanitizer-instrumented
+  GoogleTest 1.18.0 with matching headers. No sanitizer flags/checks were suppressed.
+  See docs/development.md for the configuration. System RocksDB/gRPC themselves
+  remain uninstrumented; this is not full dependency sanitizer coverage.
+- Strict compiler warnings, shell syntax, and `git diff --check` pass.
+- Local networking tests required approved execution outside the socket-restricted
+  sandbox. No tests were skipped. No new remote CI run, commit or push was made.
+
+The milestone's signed five-node transfer/retry/crash acceptance is now verified.
+Snapshot creation/install/compaction, controlled real-process partition/delay
+schedules, and exhaustive history verification remain open. The log is bounded
+at 4096 entries/8 MiB. No throughput benchmark, Merkle proof, settlement, replicated
+Compose deployment, or Kubernetes acceptance is claimed by this increment.

@@ -27,3 +27,17 @@ TEST(Config, RejectsInvalidEndpointAndTiming) {
   auto c = rollupx::test::config("unused"); c.rpc_timeout = std::chrono::milliseconds(0);
   EXPECT_THROW(c.validate(), std::invalid_argument);
 }
+TEST(Config, LedgerRequiresCompleteDistinctPublicRouting) {
+  auto c = rollupx::test::config("unused"); c.genesis_file = "genesis.txt";
+  EXPECT_THROW(c.validate(),std::invalid_argument);
+  c.public_peers = {{"n3","127.0.0.1:50071"},{"n1","127.0.0.1:50051"},{"n2","127.0.0.1:50061"}};
+  EXPECT_NO_THROW(c.validate());
+  auto changed = c; changed.public_peers[0].id = "unknown";
+  EXPECT_THROW(changed.validate(),std::invalid_argument);
+  changed = c; changed.public_peers[0].endpoint = c.peers[0].endpoint;
+  EXPECT_THROW(changed.validate(),std::invalid_argument);
+  changed = c; changed.public_peers[0].id = "n1";
+  EXPECT_THROW(changed.validate(),std::invalid_argument);
+  changed = c; changed.genesis_file.clear();
+  EXPECT_THROW(changed.validate(),std::invalid_argument);
+}

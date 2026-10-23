@@ -1,6 +1,7 @@
 #include "rollupx/node.hpp"
 #include "rollupx/http_server.hpp"
 #include "rollupx/identity_store.hpp"
+#include "rollupx/replicated_node.hpp"
 #include "consensus.grpc.pb.h"
 #include "ledger.grpc.pb.h"
 #include <algorithm>
@@ -85,19 +86,23 @@ struct Node::Impl {
     Impl& owner;
   };
 
-  explicit Impl(Config value) : config(std::move(value)), store(config), transport(*this), ledger(*this) {
+  explicit Impl(Config value) : config(std::move(value)), transport(*this), ledger(*this) {
+    config.validate();
+    if (config.genesis_file.empty()) store = std::make_unique<IdentityStore>(config);
+    else replicated = std::make_unique<ReplicatedNode>(config,[this] { return status(); });
     for (const auto& member : config.peers) if (member.id != config.id) peers.push_back({member});
   }
   ~Impl() { stop(); }
   void start() {
-    internal_server = listen(config.internal_listen, &transport, &raft);
-    public_server = listen(config.public_listen, &ledger);
+    internal_server = listen(config.internal_listen, &transport, replicated ? replicated->raft_service() : &raft);
+    public_server = listen(config.public_listen, replicated ? static_cast<grpc::Service*>(replicated.get()) : &ledger);
     http = std::make_unique<HttpServer>(parse_endpoint(config.http_listen), [this](const std::string& path) {
-      if (path == "/healthz") return HttpResponse{running.load() && !failed.load() ? 200 : 503,
-        "text/plain", running.load() && !failed.load() ? "alive\n" : "unavailable\n"};
+      if (path == "/healthz") return HttpResponse{healthy() ? 200 : 503,
+        "text/plain", healthy() ? "alive\n" : "unavailable\n"};
       if (path == "/readyz") {
-        const bool ready = running.load() && !failed.load() && status().transport_ready();
-        return HttpResponse{ready ? 200 : 503, "text/plain", ready ? "transport ready (no consensus)\n" : "transport not ready\n"};
+        const bool ready = healthy() && (replicated ? replicated->ready() : status().transport_ready());
+        return HttpResponse{ready ? 200 : 503, "text/plain", ready ?
+          (replicated ? "ledger leader ready\n" : "transport ready (no consensus)\n") : "not ready\n"};
       }
       if (path == "/metrics") return HttpResponse{200, "text/plain; version=0.0.4", metrics()};
       return HttpResponse{404, "text/plain", "not found\n"};
@@ -114,6 +119,7 @@ struct Node::Impl {
   }
   void stop() {
     running.store(false);
+    if (replicated) replicated->request_stop();
     for (auto& worker : workers) worker.request_stop();
     wake.notify_all();
     workers.clear(); // Joins; each in-flight RPC has a bounded deadline.
@@ -121,13 +127,17 @@ struct Node::Impl {
     const auto deadline = std::chrono::system_clock::now() + std::chrono::seconds(1);
     if (public_server) { public_server->Shutdown(deadline); public_server->Wait(); public_server.reset(); }
     if (internal_server) { internal_server->Shutdown(deadline); internal_server->Wait(); internal_server.reset(); }
+    if (replicated) replicated->stop();
+  }
+  bool healthy() const {
+    return running.load() && !failed.load() && (!replicated || replicated->healthy());
   }
   v1::ClusterStatus status() const {
-    v1::ClusterStatus result;
+    v1::ClusterStatus result = replicated ? replicated->status() : v1::ClusterStatus{};
     result.set_node_id(config.id);
     result.set_cluster_id(config.cluster_id);
-    result.set_stage(v1::ClusterStatus::NETWORKING_ONLY);
-    bool ready = running.load() && !failed.load();
+    if (!replicated) result.set_stage(v1::ClusterStatus::NETWORKING_ONLY);
+    bool ready = healthy();
     const auto now = Clock::now();
     std::lock_guard lock(mutex);
     for (const auto& state : peers) {
@@ -145,7 +155,11 @@ struct Node::Impl {
     const auto snapshot = status();
     std::ostringstream out;
     out << "# HELP rollupx_consensus_enabled Whether this binary implements consensus.\n"
-        << "# TYPE rollupx_consensus_enabled gauge\nrollupx_consensus_enabled 0\n"
+        << "# TYPE rollupx_consensus_enabled gauge\nrollupx_consensus_enabled " << (replicated ? 1 : 0) << '\n'
+        << "# TYPE rollupx_ledger_ready gauge\nrollupx_ledger_ready " << snapshot.ledger_ready() << '\n'
+        << "# TYPE rollupx_raft_term gauge\nrollupx_raft_term " << snapshot.term() << '\n'
+        << "# TYPE rollupx_raft_commit_index gauge\nrollupx_raft_commit_index " << snapshot.commit_index() << '\n'
+        << "# TYPE rollupx_raft_applied_index gauge\nrollupx_raft_applied_index " << snapshot.applied_index() << '\n'
         << "# HELP rollupx_transport_ready All peers recently reachable; not ledger readiness.\n"
         << "# TYPE rollupx_transport_ready gauge\nrollupx_transport_ready " << snapshot.transport_ready() << '\n'
         << "# TYPE rollupx_peer_probes_received_total counter\nrollupx_peer_probes_received_total " << received.load() << '\n'
@@ -186,7 +200,8 @@ struct Node::Impl {
   }
 
   const Config config;
-  IdentityStore store;
+  std::unique_ptr<IdentityStore> store;
+  std::unique_ptr<ReplicatedNode> replicated;
   mutable std::mutex mutex;
   std::vector<PeerState> peers;
   std::atomic<bool> running{false}, failed{false};
@@ -203,5 +218,5 @@ struct Node::Impl {
 Node::Node(Config config) : impl_(std::make_unique<Impl>(std::move(config))) { impl_->start(); }
 Node::~Node() = default;
 void Node::stop() { impl_->stop(); }
-bool Node::healthy() const { return impl_->running.load() && !impl_->failed.load() && impl_->http && impl_->http->healthy(); }
+bool Node::healthy() const { return impl_->healthy() && impl_->http && impl_->http->healthy(); }
 } // namespace rollupx

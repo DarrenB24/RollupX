@@ -1,3 +1,4 @@
+#include "rollupx/rocksdb_open.hpp"
 #include "../test_support.hpp"
 #include "../raft_store_fixture.hpp"
 #include <gtest/gtest.h>
@@ -65,8 +66,8 @@ TEST(RaftStore, RepairedSuffixPersistsAndCommittedPrefixRemains) {
   Store recovered(directory.path,raft_manifest()); EXPECT_EQ(recovered.load(),after);
 }
 void damage(const std::string& directory, const std::string& key, const std::optional<std::string>& value) {
-  rocksdb::DB* opened = nullptr; const auto status = rocksdb::DB::Open(rocksdb::Options{},directory,&opened);
-  const std::unique_ptr<rocksdb::DB> db(opened); ASSERT_TRUE(status.ok()) << status.ToString();
+  std::unique_ptr<rocksdb::DB> db; const auto status = rollupx::open_rocksdb(rocksdb::Options{},directory,db);
+  ASSERT_TRUE(status.ok()) << status.ToString();
   rocksdb::WriteOptions options; options.sync = true;
   const auto result = value ? db->Put(options,key,*value) : db->Delete(options,key);
   ASSERT_TRUE(result.ok()) << result.ToString();

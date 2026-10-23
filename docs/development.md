@@ -1,4 +1,4 @@
-# Development and Phase 1 verification
+# Development and native verification
 
 ## Native build
 
@@ -31,6 +31,28 @@ ctest --test-dir build --output-on-failure
 ASan/UBSan: configure a separate directory with `-DROLLUPX_SANITIZE=ON`.
 TSan: use another directory with `-DROLLUPX_TSAN=ON`. The two options are mutually
 exclusive. System gRPC/RocksDB are not sanitizer-instrumented by these switches.
+
+On the tested macOS installation, mixing instrumented code with prebuilt static
+RocksDB/GoogleTest archives produced container/heap overflow reports, including
+in existing tests. The verified sanitizer configuration uses
+`-DROLLUPX_ROCKSDB_SHARED=ON` and a matching GoogleTest source build compiled with
+ASan/UBSan. No sanitizer checks are disabled. Partially instrumented containers
+are a documented [Clang sanitizer limitation](https://clang.llvm.org/docs/AddressSanitizer.html#additional-checks).
+Build the same GoogleTest version as the installed headers (1.18.0 in this run):
+
+```sh
+cmake -S /path/to/googletest-1.18.0 -B build-gtest-asan \
+  -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_STANDARD=20 -DBUILD_SHARED_LIBS=ON \
+  -DBUILD_GMOCK=OFF -DCMAKE_CXX_FLAGS='-fsanitize=address,undefined -fno-omit-frame-pointer' \
+  -DCMAKE_INSTALL_PREFIX="$PWD/.deps/gtest-asan"
+cmake --build build-gtest-asan --parallel 2
+cmake --install build-gtest-asan
+cmake -S . -B build-asan -DCMAKE_BUILD_TYPE=Debug -DROLLUPX_SANITIZE=ON \
+  -DROLLUPX_ROCKSDB_SHARED=ON -DGTest_DIR="$PWD/.deps/gtest-asan/lib/cmake/GTest" \
+  -DOPENSSL_ROOT_DIR="$(brew --prefix openssl@3)"
+cmake --build build-asan --parallel 2
+ctest --test-dir build-asan --output-on-failure
+```
 
 ## Foundation checks when external libraries are unavailable
 
@@ -89,35 +111,34 @@ implementation milestones. The current dashboard measures transport, not TPS.
 
 ## API and operational semantics
 
-* Public: `Ledger.GetClusterStatus` reports `NETWORKING_ONLY`, unset Raft role, no
-  leader and zero commit/application indices. `GetLeader` returns UNAVAILABLE.
-* Ledger writes, balances, receipts, batches and proofs return UNIMPLEMENTED.
-  Internal Raft calls also return UNIMPLEMENTED. Do not use this milestone for funds.
-* Internal: `PeerTransport.Probe` checks cluster ID, complete canonical membership,
-  protocol version, and claimed sender ID; the claimed identity is not authenticated.
-* `/healthz`: process and listeners running. `/readyz`: every other configured peer
-  has responded recently; this is explicitly **transport readiness**, not quorum or
-  transaction readiness. A 3/5 transport subset is not ready in this milestone.
-* `/metrics`: actual probe counts/reachability and a consensus-enabled gauge fixed
-  to zero because that feature is absent. Raft/transaction metrics are not invented.
-* RPCs are limited to 1 MiB; each peer has one in-flight outbound probe with a
-  configurable deadline. Membership is bounded to 31; default deployment is five.
-  HTTP reads are limited to 4 KiB/250 ms and are handled by one worker.
-* The RocksDB identity manifest uses synchronous WAL writes. Reusing a DB for a
-  different cluster/member/topology fails. This milestone persists no ledger/log.
-* SIGINT/SIGTERM stop probes and listeners and release the DB. RPC deadlines bound
-  peer-worker shutdown. A fatal worker/storage/listener error exits nonzero.
+`--genesis FILE --public-peers id=host:port,...` enables the replicated ledger.
+See [replicated-node.md](replicated-node.md) for submission/retry semantics,
+local-read consistency, leader readiness, lifecycle, and remaining limits.
+
+Without those options, the networking diagnostic mode still reports
+`NETWORKING_ONLY`, exposes probes/status, and rejects ledger calls as
+`UNIMPLEMENTED`. The default Compose setup uses that diagnostic mode.
+
+Both modes expose `/healthz`, `/readyz` and `/metrics`. Replicated readiness is
+leader write-readiness; networking readiness is full-mesh probe connectivity.
+Transport probes do not establish a consensus quorum. Public/internal listeners
+are separate, with bounded messages, queues and RPC deadlines. A database cannot
+be silently reused across modes or with an incompatible durable identity.
+
+The replicated five-process crash test is registered in full-build CTest:
+
+```sh
+bash scripts/replicated-smoke.sh ./build/rollupx-node ./build/rollupx-cli ./build/rollupx-wallet
+```
 
 Listeners currently support IPv4/DNS hostnames, not IPv6 literals or TLS. Same-host
 tests do not establish geographic fault tolerance. Before sharing images publicly,
 review and pin current dependency/image versions and scan for vulnerabilities.
 
-## Verification on the initial development host
+## Verification
 
-See IMPLEMENTATION_PLAN.md for exact results. Initial PATH discovery did not find
-CMake/Protobuf/GoogleTest, but later inspection found cached installations under
-`/opt/homebrew/Caskroom/miniforge/base`. Those enabled a foundation CMake build,
-schema generation, and configuration GoogleTests. gRPC/RocksDB/Docker/Foundry remain
-missing, GitHub DNS fails, and the sandbox rejects loopback bind. Full node builds
-and network/storage tests therefore cannot be claimed as passed. CI is configured
-to run them after a commit is pushed from an environment with Git/network access.
+See IMPLEMENTATION_PLAN.md for exact results. Native gRPC/RocksDB recovery,
+network tests and the Compose transport demo passed on Ubuntu CI for `1a14d01`.
+Homebrew dependencies now permit local native builds and the replicated-node
+suite. Local socket tests require execution outside the restricted sandbox.
+Docker/Foundry deployment work remains separate from these native checks.

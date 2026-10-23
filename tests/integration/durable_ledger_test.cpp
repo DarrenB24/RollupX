@@ -1,3 +1,4 @@
+#include "rollupx/rocksdb_open.hpp"
 #include "../test_support.hpp"
 #include "../ledger_fixture.hpp"
 #include <future>
@@ -75,9 +76,9 @@ TEST(DurableLedger, RejectsWrongGenesisAndExclusiveOwnership) {
   EXPECT_THROW({ DurableLedger ledger(directory.path+"/missing", genesis, {}, LedgerOpenMode::existing_only); }, std::runtime_error);
 }
 void corrupt(const std::string& directory, const std::string& key, const std::optional<std::string>& value) {
-  rocksdb::DB* output = nullptr;
-  const auto opened = rocksdb::DB::Open(rocksdb::Options{}, directory, &output);
-  const std::unique_ptr<rocksdb::DB> db(output); ASSERT_TRUE(opened.ok()) << opened.ToString();
+  std::unique_ptr<rocksdb::DB> db;
+  const auto opened = open_rocksdb(rocksdb::Options{}, directory, db);
+  ASSERT_TRUE(opened.ok()) << opened.ToString();
   rocksdb::WriteOptions options; options.sync = true;
   const auto written = value ? db->Put(options, key, *value) : db->Delete(options, key);
   ASSERT_TRUE(written.ok()) << written.ToString();

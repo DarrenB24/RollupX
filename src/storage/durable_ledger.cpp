@@ -1,3 +1,4 @@
+#include "rollupx/rocksdb_open.hpp"
 #include "rollupx/durable_ledger.hpp"
 #include <filesystem>
 #include <limits>
@@ -23,8 +24,7 @@ struct DurableLedger::Impl {
     rocksdb::Options options;
     options.create_if_missing = mode == LedgerOpenMode::create_or_open; options.paranoid_checks = true;
     options.max_open_files = 128; options.write_buffer_size = 4*1024*1024; options.max_write_buffer_number = 2;
-    rocksdb::DB* output = nullptr;
-    const auto opened = rocksdb::DB::Open(options, directory, &output); db.reset(output); checked(opened, "open ledger");
+    checked(open_rocksdb(options, directory, db), "open ledger");
     const auto identity = get("meta/identity");
     if (!identity) {
       if (mode == LedgerOpenMode::existing_only) throw std::runtime_error("database is not an initialized standalone ledger");

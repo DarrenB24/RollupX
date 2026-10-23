@@ -20,7 +20,8 @@ int main(int argc, char* argv[]) {
     if (sigaction(SIGINT, &action, nullptr) != 0 || sigaction(SIGTERM, &action, nullptr) != 0)
       throw std::runtime_error("cannot install shutdown signal handlers");
     rollupx::Node node(config);
-    std::cout << "node=" << config.id << " stage=NETWORKING_ONLY public=" << config.public_listen
+    std::cout << "node=" << config.id << " stage=" << (config.genesis_file.empty() ? "NETWORKING_ONLY" : "REPLICATED_LEDGER")
+              << " public=" << config.public_listen
               << " internal=" << config.internal_listen << " http=" << config.http_listen << std::endl;
     while (!stopping && node.healthy()) std::this_thread::sleep_for(std::chrono::milliseconds(50));
     const bool failed = !stopping;

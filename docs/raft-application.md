@@ -3,10 +3,10 @@
 ## Status
 
 The application planner, recovery audit, and signed-transfer five-node simulation
-run in the offline core build. `raft::Store` implements the corresponding RocksDB
-writes and recovery path as source. Its database and SIGKILL tests have not run on
-the current host because RocksDB is unavailable. The gRPC node still operates in
-networking-only mode; this is not yet a durably replicated network ledger.
+run in the offline core build. Native tests verify `raft::Store` application writes,
+startup replay and SIGKILL recovery. The [replicated node](replicated-node.md)
+connects that store to gRPC consensus and public ledger APIs, with five-process
+signed-transfer and crash/restart verification.
 
 ## Transfer commands
 
@@ -130,9 +130,9 @@ replay, poisoned handles, core/store integration, mode/genesis mismatch, and inv
 command admission. Two application process tests kill workers after commit,
 before/after transfer application, and repeatedly during startup replay. Workers
 must terminate by SIGKILL at a requested hook within 15 seconds; missed hooks fail.
-These are implemented tests awaiting execution, not proof of power-loss durability
-or of interruption inside RocksDB's own WAL recovery.
+These tests pass against real RocksDB. They do not establish power-loss durability
+or interruption inside RocksDB's own WAL recovery.
 
-The next acceptance gate is the real storage suite, followed by gRPC consensus
-integration and five-process fault tests. Merkle commitments, snapshots, settlement,
-sequencing workers, and throughput measurements remain pending.
+The remaining recovery gate is snapshots plus broader process partition/delay
+testing. Merkle commitments, settlement, sequencing workers, and throughput
+measurements remain pending.

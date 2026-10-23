@@ -3,11 +3,12 @@
 An incremental C++20 optimistic-rollup research project: a five-node, crash-tolerant
 replicated transfer ledger with Ethereum settlement as its eventual destination.
 
-**Current milestone: verified offline transaction core; networking integration
-and durable execution pending.** This repository is not yet a working rollup.
-Networked Raft, verified durable ledger execution, settlement, and performance results are pending. See
-[IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) for the implementation and
-verification record. Unavailable APIs fail explicitly.
+**Current milestone: replicated transfer ledger with durable public APIs.**
+Five native processes can elect a leader, commit signed transfers, serve durable
+receipts/balances/nonces, and recover after process crashes. Snapshots, performance
+measurement, Merkle proofs and Ethereum settlement remain unimplemented. See
+[IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) for verification evidence and
+[replicated-node.md](docs/replicated-node.md) for the API contract and demo.
 
 Start with the [architecture](docs/architecture.md), [transaction model](docs/transaction-model.md),
 [consensus protocol](docs/consensus.md), and [fraud-proof design](docs/fraud-proofs.md).
@@ -26,13 +27,13 @@ Build, tests, and demo instructions are in [development.md](docs/development.md)
 * Ethereum-compatible Keccak, OpenSSL secp256k1 signing/recovery, strict canonical
   transactions, deterministic in-memory transfer execution, and an offline wallet.
 * Standalone RocksDB ledger source with atomic state/receipts, startup audit/replay,
-  a local query CLI, and real-database crash tests awaiting execution.
+  a local query CLI, and verified real-database crash tests.
 * Tested protobuf transaction authentication, redundant-field validation, bounded
   parsing, and an offline envelope/protobuf conversion CLI.
 * Isolated Raft protocol core with persistence ordering, elections, log repair,
   majority commitment, check-quorum, and deterministic five-node fault simulations.
 * Tested identity-bound Raft records and persistence transition guards; RocksDB
-  Raft store and process-kill test source awaiting real-database verification.
+  Raft store and verified process-kill recovery tests.
 * Tested committed-entry application and recovery audit, including no-op progress
   and idempotent receipts; atomic RocksDB application/replay source and crash tests.
 * Raft Protobuf codec with bounded validation, configuration checks, correlated
@@ -44,16 +45,14 @@ Build, tests, and demo instructions are in [development.md](docs/development.md)
 * Bounded peer dispatch and ingress with deadline/cancellation handling, plus a
   threaded five-replica partition/healing test using actual Protobuf serialization.
 * Raft gRPC adapter and loopback-test source with a storage-independent build tier;
-  actual gRPC compilation/execution remains pending.
+  verified native socket transport.
 * Owner-thread transfer admission and bounded receipt confirmation, including
-  concurrent retry tests across five threaded replicas. Public node wiring remains pending.
+  concurrent retries, durable public queries, leader discovery, and five-process fault tests.
 
-The gRPC/RocksDB source and five-node deployment **have not run on the initial
-development host**: those dependencies are missing and socket binding is denied.
-The CMake foundation build, configuration tests (including four GoogleTest cases),
-protobuf schema generation, and YAML/JSON/shell checks have been verified. See the
-plan for sanitizer results and exact remaining checks. CI configuration is not a
-claim that CI has run.
+The native dependency gate passed in [main-branch CI](https://github.com/DarrenB24/RollupX/actions/runs/39860618296).
+The new replicated-node integration is verified locally; see the plan for its
+exact test coverage and remaining limits. CI results for the earlier commit do
+not certify the new changes.
 
 ## Build and test
 
@@ -73,7 +72,7 @@ It includes [transaction admission and confirmation](docs/transaction-admission.
 tests that distinguish a local append, majority commitment, and an applied receipt.
 It also tests the [threaded Raft runtime](docs/raft-runtime.md), including a separate
 ThreadSanitizer check. The [Raft transport](docs/raft-transport.md) documents tested
-peer scheduling and the gRPC adapter's pending integration gates. Use
+peer scheduling and the native gRPC adapter. Use
 `-DROLLUPX_TRANSPORT_ONLY=ON` to build its socket tests with gRPC but without RocksDB.
 The next build tier, `-DROLLUPX_LEDGER_ONLY=ON`, adds real RocksDB without gRPC.
 See [persistence and recovery](docs/persistence.md) for its protocol, CLI, and tests.
@@ -114,16 +113,22 @@ peers, and `transport_ready=true`. There is no elected leader at this milestone.
 Stopping Compose preserves node volumes. The smoke script exercises process
 restart and peer reconnection, not committed-transaction recovery.
 
-## Next milestones and limitations
+## Replicated ledger and next milestones
 
-Phase 2's remaining gate is building and verifying the new RocksDB durability/query
-path against real crashes, then connecting the tested protobuf adapter to the
-replicated ledger and verifying network integration.
-Phase 3 connects the tested Raft core to persistent storage, gRPC, and durable
-application, then verifies distributed failure recovery with real processes.
-Only after those correctness gates pass do batching benchmarks, Merkle proofs,
-Solidity fraud challenges, Anvil publication, and Kubernetes follow. No TPS or
-latency result exists yet. Foundry tests and the load generator are not implemented.
+```sh
+bash scripts/replicated-smoke.sh ./build/rollupx-node ./build/rollupx-cli ./build/rollupx-wallet
+```
+
+This verifies signed transfers, retry deduplication, majority progress after leader
+and follower crashes, catch-up, and full-cluster crash recovery. Enable persistent
+ledger mode with `--genesis` and `--public-peers`; see the
+[replicated node guide](docs/replicated-node.md). Balance/nonce reads are local
+snapshots with applied indices; follower reads may lag.
+
+Next: snapshots/install/compaction and broader process partition/delay tests, then
+bounded batching and measured performance, Merkle proofs, fraud challenges, Anvil
+settlement and deployment acceptance. No TPS or latency benchmark exists yet.
+The log is currently bounded to 4096 entries/8 MiB.
 
 The design intentionally begins with an immutable 16-account registry and a bounded
 single-transfer settlement witness. Multi-transfer L1 settlement requires a later
@@ -135,5 +140,5 @@ The repository now contains the user's initial commit and configured origin.
 Agent commit/push outcomes and any remaining permission/network blockers are recorded
 in IMPLEMENTATION_PLAN.md.
 
-Raft will provide crash fault tolerance, not Byzantine fault tolerance. This is an
+Raft provides crash fault tolerance within the documented model, not Byzantine fault tolerance. This is an
 educational prototype, not production-secure Ethereum settlement or an EVM rollup.

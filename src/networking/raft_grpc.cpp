@@ -61,8 +61,10 @@ RpcResult GrpcRaftClient::call(NodeId peer, const WireRequest& request, RpcDeadl
   const auto now = std::chrono::steady_clock::now();
   if (deadline <= now) return {RpcCode::deadline};
   grpc::ClientContext context;
-  context.set_deadline(std::chrono::system_clock::now()+std::min(deadline-now,
-    std::chrono::duration_cast<std::chrono::steady_clock::duration>(std::chrono::seconds(10))));
+  const auto budget = std::min(deadline-now,
+    std::chrono::duration_cast<std::chrono::steady_clock::duration>(std::chrono::seconds(10)));
+  context.set_deadline(std::chrono::system_clock::now()+
+    std::chrono::duration_cast<std::chrono::system_clock::duration>(budget));
   std::stop_callback cancellation(stop,[&] { context.TryCancel(); });
   return std::visit([&](const auto& message) -> RpcResult {
     using T = std::decay_t<decltype(message)>;

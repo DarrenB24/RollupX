@@ -54,6 +54,17 @@ void Config::validate() const {
       throw std::invalid_argument("duplicate member ID or endpoint");
   }
   if (!ids.contains(id)) throw std::invalid_argument("node ID must appear in membership");
+  if (!genesis_file.empty() || !public_peers.empty()) {
+    if (genesis_file.empty() || public_peers.size() != peers.size())
+      throw std::invalid_argument("ledger mode requires --genesis and complete --public-peers");
+    std::set<std::string> public_ids, public_endpoints;
+    for (const auto& peer : public_peers) {
+      if (parse_endpoint(peer.endpoint).host == "0.0.0.0" || !ids.contains(peer.id) ||
+          !public_ids.insert(peer.id).second || !public_endpoints.insert(peer.endpoint).second ||
+          endpoints.contains(peer.endpoint))
+        throw std::invalid_argument("invalid public member mapping");
+    }
+  }
   if (probe_interval.count() < 10 || probe_interval.count() > 60000 ||
       rpc_timeout.count() < 10 || rpc_timeout.count() > 10000 ||
       peer_stale_after < 2 * (probe_interval + rpc_timeout) || peer_stale_after.count() > 300000)
@@ -81,17 +92,22 @@ Config parse_config(int argc, char* argv[]) {
     else if (key == "--internal-listen") config.internal_listen = value;
     else if (key == "--http-listen") config.http_listen = value;
     else if (key == "--data-dir") config.data_dir = value;
+    else if (key == "--genesis") {
+      if (value.empty()) throw std::invalid_argument("genesis path is required");
+      config.genesis_file = value;
+    }
     else if (key == "--probe-interval-ms") config.probe_interval = std::chrono::milliseconds(number(value, 60000));
     else if (key == "--rpc-timeout-ms") config.rpc_timeout = std::chrono::milliseconds(number(value, 10000));
     else if (key == "--peer-stale-ms") config.peer_stale_after = std::chrono::milliseconds(number(value, 300000));
-    else if (key == "--peers") {
+    else if (key == "--peers" || key == "--public-peers") {
+      auto& members = key == "--peers" ? config.peers : config.public_peers;
       std::size_t start = 0;
       while (start < value.size()) {
         const auto comma = value.find(',', start);
         const auto item = value.substr(start, comma == std::string::npos ? comma : comma - start);
         const auto equal = item.find('=');
         if (equal == std::string::npos) throw std::invalid_argument("members use id=host:port");
-        config.peers.push_back({item.substr(0, equal), item.substr(equal + 1)});
+        members.push_back({item.substr(0, equal), item.substr(equal + 1)});
         if (comma == std::string::npos) break;
         start = comma + 1;
         if (start == value.size()) throw std::invalid_argument("trailing membership separator");
@@ -105,6 +121,7 @@ std::string usage() {
   return "rollupx-node --id n1 --data-dir ./data/n1 --peers n1=127.0.0.1:50052,...\n"
     "  [--cluster-id rollupx-local] [--public-listen 127.0.0.1:50051]\n"
     "  [--internal-listen 127.0.0.1:50052] [--http-listen 127.0.0.1:9100]\n"
-    "  [--probe-interval-ms 200] [--rpc-timeout-ms 150] [--peer-stale-ms 1500]\n";
+    "  [--probe-interval-ms 200] [--rpc-timeout-ms 150] [--peer-stale-ms 1500]\n"
+    "  Ledger mode: --genesis GENESIS_FILE --public-peers n1=127.0.0.1:50051,...\n";
 }
 } // namespace rollupx

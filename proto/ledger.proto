@@ -46,5 +46,6 @@ message ClusterStatus {
   uint64 applied_index = 8;
   repeated PeerStatus peers = 9;
   bool transport_ready = 10; // All configured peers recently observed; NOT quorum readiness.
+  bool ledger_ready = 11; // Healthy leader with its current-term barrier applied. May change after response.
 }
 message LeaderResponse { string node_id = 1; string endpoint = 2; uint64 term = 3; }

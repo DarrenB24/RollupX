@@ -2,9 +2,9 @@
 
 `rollupx_submission` connects authenticated transfers to the Raft runtime and
 receipt reader. It is tested with real threads and the shared application planner,
-including five runtimes exchanging serialized Protobuf messages. Local tests use
-memory-backed persistence. Real RocksDB reopen test source exists but has not run;
-the public gRPC node does not yet expose this path.
+including five runtimes exchanging serialized Protobuf messages. The native
+[replicated node](replicated-node.md) now exposes this path through gRPC with an
+audited RocksDB store and verified five-process crash recovery.
 
 ## Conservative leader admission
 
@@ -102,10 +102,9 @@ transport.bind(runtime.handle());
 LedgerSubmission submission(runtime.handle(), read_receipt);
 ```
 
-This is the integration contract, not a claim that `rollupx-node` already runs it.
-Store, transport, and captured callbacks must outlive the runtime and submissions.
-The full node still needs real gRPC/RocksDB verification, public query/submission
-handlers, lifecycle/readiness wiring, and five-process fault testing.
+The replicated node implements this integration contract. Store, transport, and
+captured callbacks outlive the runtime and submissions. See the node guide for
+public query semantics, lifecycle/readiness, and five-process crash testing.
 
 ## Verification
 

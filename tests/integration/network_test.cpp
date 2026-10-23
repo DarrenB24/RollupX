@@ -1,3 +1,4 @@
+#include "../network_support.hpp"
 #include "../test_support.hpp"
 #include "rollupx/node.hpp"
 #include "consensus.grpc.pb.h"
@@ -11,27 +12,7 @@
 
 namespace {
 using namespace std::chrono_literals;
-// Reserve distinct kernel-selected ports until the complete topology is assembled.
-class Ports {
- public:
-  ~Ports() { release(); }
-  std::string next() {
-    const int fd = ::socket(AF_INET, SOCK_STREAM, 0);
-    if (fd < 0) throw std::runtime_error("test socket failed");
-    descriptors.push_back(fd);
-    sockaddr_in address{}; address.sin_family = AF_INET;
-    address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-    if (::bind(fd, reinterpret_cast<sockaddr*>(&address), sizeof(address)) != 0)
-      throw std::runtime_error("test port reservation failed");
-    socklen_t size = sizeof(address);
-    if (::getsockname(fd, reinterpret_cast<sockaddr*>(&address), &size) != 0)
-      throw std::runtime_error("test getsockname failed");
-    return "127.0.0.1:" + std::to_string(ntohs(address.sin_port));
-  }
-  void release() { for (const int fd : descriptors) ::close(fd); descriptors.clear(); }
- private:
-  std::vector<int> descriptors;
-};
+using rollupx::test::Ports;
 bool ready(const std::string& endpoint, int expected_peers) {
   auto client = rollupx::v1::Ledger::NewStub(grpc::CreateChannel(endpoint, grpc::InsecureChannelCredentials()));
   grpc::ClientContext context; context.set_deadline(std::chrono::system_clock::now() + 200ms);

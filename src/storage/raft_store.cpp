@@ -1,3 +1,4 @@
+#include "rollupx/rocksdb_open.hpp"
 #include "rollupx/raft_store.hpp"
 #include <filesystem>
 #include <mutex>
@@ -23,8 +24,7 @@ struct Store::Impl {
     rocksdb::Options options; options.create_if_missing = mode == StoreOpenMode::create_or_open;
     options.paranoid_checks = true; options.max_open_files = 128;
     options.write_buffer_size = 4*1024*1024; options.max_write_buffer_number = 2;
-    rocksdb::DB* opened = nullptr;
-    const auto status = rocksdb::DB::Open(options,directory,&opened); db.reset(opened); checked(status,"open Raft database");
+    checked(open_rocksdb(options,directory,db),"open Raft database");
     std::string stored; const auto read = db->Get(rocksdb::ReadOptions{},"meta/identity",&stored);
     if (read.IsNotFound()) {
       if (mode == StoreOpenMode::existing_only) throw std::runtime_error("Raft database is uninitialized");
