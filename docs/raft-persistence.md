@@ -149,11 +149,14 @@ candidate. Workers have explicit termination deadlines and missed hooks fail.
 
 These verified storage tests exercise process interruption around
 synchronous writes, not power loss or interruption inside RocksDB's WAL recovery.
-Initialization crash points, checkpoints, snapshots, and compaction are pending.
+Initialization crash points and compaction remain pending. Checkpoint replacement,
+chunk staging and atomic snapshot publication now have process-kill coverage; see
+[snapshot recovery](raft-snapshots.md).
 The ledger-enabled store now includes accounts, receipts, applied progress, startup
 audit/replay, and separate database/application-kill tests as described in
 [committed application](raft-application.md). The gRPC driver and five-process
-crash recovery now have native verification; snapshot recovery remains pending.
+crash recovery now have native verification; live snapshot RPC integration remains
+pending.
 Two additional ledger database tests check named identity retention through replay,
 rename/downgrade rejection, and refusal to silently upgrade a numeric-only store.
 These tests also pass against real RocksDB.

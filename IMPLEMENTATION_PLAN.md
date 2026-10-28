@@ -6,7 +6,7 @@ Work in phase order; compile and run relevant tests before promoting a milestone
 Never return placeholder success for absent consensus, execution, or settlement.
 This plan is the status ledger; design documents describe future behavior.
 
-### Current next steps (2026-10-23)
+### Current next steps (2026-10-28)
 
 The native dependency gate is verified: main-branch CI run `39860618296` for
 `1a14d01` passed full gRPC/RocksDB, storage crash/recovery, transport, sanitizer,
@@ -16,9 +16,11 @@ exposes durable submission/query APIs, and passes native five-process signed
 transfer, retry, leader/follower crash, catch-up and full restart tests locally.
 The full rollup is not complete. Remaining work, in dependency order:
 
-1. **Complete consensus recovery:** implement snapshot creation/install/compaction
-   with crash-safe publication; extend real process testing to controlled network
-   partitions, delays, duplicate traffic and interrupted snapshot installation.
+1. **Complete consensus recovery:** storage-level checksummed snapshots and staged
+   atomic installation are implemented (see [snapshot recovery](docs/raft-snapshots.md)).
+   Integrate live transfer with the runtime and implement safe compaction; extend
+   real process testing to controlled network partitions, delays, duplicate traffic
+   and interrupted snapshot installation.
    The log is still bounded to 4096 entries/8 MiB. Current crash tests do not prove
    power-loss durability or exhaustive distributed safety.
 2. **Build and measure the pipeline:** bounded mempool, validation workers, batching,
@@ -131,7 +133,8 @@ This phase remains open for snapshots and broader partition/delay recovery tests
 - [x] Durable append/conflict repair, per-peer progress, current-term commit rule.
 - [x] Ordered committed application, leader hints, check-quorum, no-op barrier.
 - [ ] Recovery validation/replay, restart catch-up, storage error fail-stop.
-- [ ] Checksummed snapshots, staged install, atomic publication, safe compaction.
+- [x] Storage-level checksummed snapshots, staged install, atomic publication.
+- [ ] Live snapshot transfer/runtime integration and safe compaction.
 - [ ] Five-process crash/partition/delay scenarios and history/root comparison.
 
 Acceptance: no conflicting committed index, majority commits during two crashes,
@@ -800,3 +803,42 @@ pass in Debug (11.00 seconds) and ASan/UBSan (10.77 seconds). `git diff --check`
 passes. GCC/Docker are not installed locally, so the corrected commit must run in
 Ubuntu CI before the failed jobs can be declared green. The fix is saved locally;
 no commit or push was performed in this repair.
+
+
+## Storage-level snapshot recovery (2026-10-28)
+
+Implemented versioned, checksummed snapshots with committed signed history,
+accounts and original receipts. Encoding and decoding independently replay from
+bound genesis; source election metadata and uncommitted suffixes are excluded.
+The format is portable across members of the same configuration. Bounded chunks
+are durably staged, support exact retries and restart/resume, and cannot affect
+active state before publication.
+
+A single synchronous RocksDB WriteBatch publishes validated Raft/ledger state,
+receipts and checkpoint while removing staging. Installation preserves target
+term/vote, rejects regressing or conflicting committed history, and preserves a
+matching suffix. Ambiguous writes poison the handle until reopen. See
+[raft-snapshots.md](docs/raft-snapshots.md) for the lifecycle contract: these APIs
+run before Runtime attachment. Live InstallSnapshot and compaction remain absent;
+the first format retains full signed history and existing log limits.
+
+Added six codec/chunk tests, eight real-store tests and one process-crash test
+covering eight SIGKILL boundaries. The latter interrupts checkpoint replacement,
+first/final chunk writes and publication before/after synchronous persistence,
+reopens twice, and retries installation. Fixtures reuse exact signed bytes across
+processes because signing a payload again can produce different signatures.
+Updated current documentation and removed an unsupported single-member example.
+
+Verification:
+
+- Full Debug build and all **20 CTest entries passed** (68.04 seconds).
+- Full ASan/UBSan build and all **20 CTest entries passed** (77.21 seconds), using
+  shared RocksDB and the existing sanitizer-built GoogleTest configuration.
+- GCC 16 strict C++20 syntax checks passed for the snapshot codec/store, new unit
+  and integration tests, crash worker and modified process-crash test, with
+  `-Wall -Wextra -Wpedantic -Werror`. This is not an Ubuntu link/runtime CI run.
+- `git diff --check` passed. No commit, push or remote CI run was performed.
+
+Next: integrate runtime-owned snapshot transfer and develop compaction with a
+preserved receipt/batch audit trail, then verify catch-up under controlled network
+partitions and delays. Process kills do not establish power-loss durability.

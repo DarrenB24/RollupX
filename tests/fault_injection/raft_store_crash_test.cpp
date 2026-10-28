@@ -1,9 +1,11 @@
 #include "../test_support.hpp"
 #include "../raft_store_fixture.hpp"
+#include "../snapshot_fixture.hpp"
 #include <cerrno>
 #include <chrono>
 #include <csignal>
 #include <gtest/gtest.h>
+#include <fstream>
 #include <spawn.h>
 #include <sys/wait.h>
 #include <thread>
@@ -73,5 +75,64 @@ TEST(RaftApplicationCrash, RepeatedProcessKillsDuringReplayPreserveExactlyOnceEf
   Store recovered(directory.path,raft_ledger_manifest(),ledger_genesis());
   EXPECT_EQ(recovered.apply_committed(),4U); EXPECT_EQ(recovered.ledger_state().accounts[0].balance,70U);
   EXPECT_EQ(recovered.ledger_state().accounts[0].nonce,2U);
+}
+TEST(RaftSnapshotCrash, KilledStagingAndPublicationRecoverOnlyCompleteAtomicGenerations) {
+  const auto image = snapshot_image(); const auto half = image.size()/2;
+  for (const auto* operation : {"checkpoint","stage-first","stage-last","publish"}) {
+    for (const auto* boundary : {"before","after"}) {
+      SCOPED_TRACE(std::string(operation)+"/"+boundary); Directory directory;
+      {
+        Store initial(directory.path,raft_ledger_manifest(),ledger_genesis());
+        if (std::string_view(operation) == "checkpoint") {
+          auto state = ledger_snapshot().prefix; state.term = 3; state.voted_for = 2;
+          state.commit = 2; initial.persist(state); initial.apply_committed(); initial.create_snapshot();
+          state.commit = 4; initial.persist(state); initial.apply_committed();
+        } else initial.persist({3,2,{},0});
+        if (std::string_view(operation) == "stage-last") initial.stage_snapshot(snapshot_chunk(image,0,half));
+        if (std::string_view(operation) == "publish") stage_image(initial,image);
+      }
+      {
+        std::ofstream input(directory.path+"/snapshot-input.bin",std::ios::binary);
+        input.write(image.data(),static_cast<std::streamsize>(image.size()));
+        ASSERT_TRUE(input.good());
+      }
+      ASSERT_TRUE(crash(directory.path,boundary,operation,ROLLUPX_SNAPSHOT_CRASH_WORKER));
+      const bool after = std::string_view(boundary) == "after";
+      for (int reopen = 0; reopen < 2; ++reopen) {
+        Store recovered(directory.path,raft_ledger_manifest(),ledger_genesis());
+        EXPECT_EQ(recovered.load().term,3U); EXPECT_EQ(recovered.load().voted_for,2U);
+        const bool applied = std::string_view(operation) == "checkpoint" || (std::string_view(operation) == "publish" && after);
+        EXPECT_EQ(recovered.load().commit,applied ? 4U : 0U);
+        EXPECT_EQ(recovered.ledger_state().applied_index,applied ? 4U : 0U);
+        EXPECT_EQ(recovered.ledger_state().accounts[0].balance,applied ? 70U : 100U);
+        EXPECT_EQ(recovered.receipt(ledger_transaction().id).has_value(),applied);
+        if (applied) {
+          for (const auto& [id,receipt] : ledger_snapshot().receipts) {
+            ASSERT_TRUE(recovered.receipt(id)); EXPECT_EQ(*recovered.receipt(id),receipt);
+          }
+        }
+        const auto staged = recovered.staged_snapshot();
+        if (std::string_view(operation) == "stage-first") {
+          EXPECT_EQ(staged.has_value(),after);
+          if (staged) { EXPECT_EQ(staged->next_offset,half); }
+        } else if (std::string_view(operation) == "stage-last") {
+          ASSERT_TRUE(staged); EXPECT_EQ(staged->next_offset,after ? image.size() : half);
+        } else if (std::string_view(operation) == "publish") {
+          EXPECT_EQ(staged.has_value(),!after);
+        }
+        if (std::string_view(operation) == "checkpoint") {
+          const auto local = recovered.local_snapshot(); ASSERT_TRUE(local);
+          EXPECT_EQ(rollupx::raft::decode_snapshot(raft_ledger_manifest(),ledger_genesis(),*local).prefix.commit,after ? 4U : 2U);
+        } else if (std::string_view(operation) == "publish") {
+          EXPECT_EQ(recovered.local_snapshot().has_value(),after);
+        }
+      }
+      if (std::string_view(operation) != "checkpoint") {
+        Store recovered(directory.path,raft_ledger_manifest(),ledger_genesis());
+        stage_image(recovered,image); (void)recovered.publish_staged_snapshot();
+        EXPECT_EQ(recovered.ledger_state(),ledger_snapshot().ledger); EXPECT_FALSE(recovered.staged_snapshot());
+      }
+    }
+  }
 }
 } // namespace

@@ -24,33 +24,8 @@ CTest registers it as `five_process_ledger`. `replicated_node_tests` separately
 covers concurrent first submissions, follower retries, loss of quorum, invalid
 admission, missing queries, unsupported proofs, and incompatible database reuse.
 
-For a persistent single-member development instance (the same consensus path,
-with a quorum of one):
-
-```sh
-mkdir -p demo
-sender=$(./build/rollupx-wallet keygen demo/sender.key)
-recipient=$(./build/rollupx-wallet keygen demo/recipient.key)
-printf 'chain 31337\naccount %s 100\naccount %s 0\n' "$sender" "$recipient" > demo/genesis.txt
-./build/rollupx-node --id n1 --data-dir data/replicated-n1 \
-  --peers n1=127.0.0.1:50052 --public-peers n1=127.0.0.1:50051 \
-  --genesis demo/genesis.txt
-```
-
-After election, use another terminal:
-
-```sh
-./build/rollupx-cli leader 127.0.0.1:50051
-./build/rollupx-cli ready 127.0.0.1:50051
-# Set RECIPIENT_ADDRESS to the recipient printed by keygen above.
-tx=$(./build/rollupx-wallet sign demo/sender.key 31337 "$RECIPIENT_ADDRESS" 10 0)
-./build/rollupx-cli submit 127.0.0.1:50051 "$tx"
-./build/rollupx-cli receipt 127.0.0.1:50051 "${tx:0:64}"
-./build/rollupx-cli balance 127.0.0.1:50051 "$RECIPIENT_ADDRESS"
-./build/rollupx-cli nonce 127.0.0.1:50051 "$RECIPIENT_ADDRESS"
-# Use the log_index returned by submit; election no-ops consume log indices.
-./build/rollupx-cli batch 127.0.0.1:50051 2
-```
+Membership requires an odd count of 3–31 nodes; a single-member instance is not
+supported. Use the five-process script above for a complete runnable example.
 
 For five members, provide every node with identical genesis contents, all five
 internal `--peers` routes and public `--public-peers` routes, plus its own ID,
@@ -113,7 +88,8 @@ commit/application indices, in addition to transport probes.
 
 ## Remaining limits
 
-The log remains bounded to 4096 entries/8 MiB without snapshots or compaction.
+The log remains bounded to 4096 entries/8 MiB. The [snapshot store](raft-snapshots.md)
+supports recovery before runtime startup; live transfer and compaction are pending.
 The node rejects excess work rather than silently discarding history. This
 milestone has no batching pipeline, throughput benchmark, Merkle commitments,
 Ethereum settlement, or Byzantine protection. Internal/public gRPC is plaintext

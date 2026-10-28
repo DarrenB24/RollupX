@@ -5,8 +5,9 @@ replicated transfer ledger with Ethereum settlement as its eventual destination.
 
 **Current milestone: replicated transfer ledger with durable public APIs.**
 Five native processes can elect a leader, commit signed transfers, serve durable
-receipts/balances/nonces, and recover after process crashes. Snapshots, performance
-measurement, Merkle proofs and Ethereum settlement remain unimplemented. See
+receipts/balances/nonces, and recover after process crashes. Storage-level
+snapshots support validated, atomic recovery; live snapshot transfer, compaction, performance measurement,
+Merkle proofs and Ethereum settlement remain unimplemented. See
 [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) for verification evidence and
 [replicated-node.md](docs/replicated-node.md) for the API contract and demo.
 
@@ -125,7 +126,9 @@ ledger mode with `--genesis` and `--public-peers`; see the
 [replicated node guide](docs/replicated-node.md). Balance/nonce reads are local
 snapshots with applied indices; follower reads may lag.
 
-Next: snapshots/install/compaction and broader process partition/delay tests, then
+The [snapshot store](docs/raft-snapshots.md) can create audited checkpoints and
+resume staged installation before runtime startup. It retains signed history.
+Next: live snapshot transfer/compaction and broader process partition/delay tests, then
 bounded batching and measured performance, Merkle proofs, fraud challenges, Anvil
 settlement and deployment acceptance. No TPS or latency benchmark exists yet.
 The log is currently bounded to 4096 entries/8 MiB.

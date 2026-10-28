@@ -81,6 +81,22 @@ struct Store::Impl {
     const auto value = get(receipt_key(id)); if (!value) return std::nullopt;
     const auto receipt = decode_receipt(*value); validate_receipt_origin(receipt,id,*ledger,state); return receipt;
   }
+  std::optional<SnapshotStage> staged() {
+    try {
+      const auto value = get("snapshot/staging");
+      return value ? std::optional{decode_snapshot_stage(*value)} : std::nullopt;
+    } catch (...) { failed = true; throw; }
+  }
+  void check_receipts(const std::map<Hash,LedgerReceipt>& expected) const {
+    const std::unique_ptr<rocksdb::Iterator> iterator(db->NewIterator(rocksdb::ReadOptions{}));
+    for (iterator->Seek("receipt/"); iterator->Valid() && iterator->key().starts_with("receipt/"); iterator->Next()) {
+      const auto receipt = decode_receipt(iterator->value().ToString());
+      const auto found = expected.find(receipt.transaction_id);
+      if (iterator->key().ToString() != receipt_key(receipt.transaction_id) || found == expected.end() || found->second != receipt)
+        throw std::runtime_error("stored receipt conflicts with snapshot history");
+    }
+    checked(iterator->status(),"audit snapshot receipts");
+  }
   void apply() {
     require_ledger();
     while (ledger->applied_index < state.commit) {
@@ -147,6 +163,101 @@ std::optional<LedgerBatch> Store::batch(Index index) const {
     const auto& command = impl_->state.log[index-1].command;
     if (command.empty()) return std::nullopt;
     return LedgerBatch{index,decode_transfer_command(command)};
+  } catch (...) { impl_->failed = true; throw; }
+}
+std::string Store::create_snapshot() {
+  std::lock_guard lock(impl_->mutex); impl_->require_ledger();
+  if (impl_->state.commit == 0 || impl_->ledger->applied_index != impl_->state.commit)
+    throw std::invalid_argument("checkpoint requires nonempty fully applied commitment");
+  try {
+    const auto snapshot = make_snapshot(impl_->manifest,*impl_->genesis,impl_->state,*impl_->ledger,
+      [this](const Hash& id) { return impl_->find_receipt(id); });
+    impl_->check_receipts(snapshot.receipts);
+    const auto encoded = encode_snapshot(impl_->manifest,*impl_->genesis,snapshot);
+    rocksdb::WriteBatch batch; checked(batch.Put("snapshot/local",encoded),"stage local checkpoint");
+    if (impl_->hook) impl_->hook(StoreCrashPoint::before_checkpoint);
+    impl_->sync(batch);
+    if (impl_->hook) impl_->hook(StoreCrashPoint::after_checkpoint);
+    return encoded;
+  } catch (...) { impl_->failed = true; throw; }
+}
+std::optional<std::string> Store::local_snapshot() const {
+  std::lock_guard lock(impl_->mutex); impl_->require_ledger();
+  try {
+    const auto encoded = impl_->get("snapshot/local");
+    if (encoded) {
+      const auto snapshot = decode_snapshot(impl_->manifest,*impl_->genesis,*encoded);
+      if (snapshot.prefix.commit > impl_->ledger->applied_index ||
+          !std::equal(snapshot.prefix.log.begin(),snapshot.prefix.log.end(),impl_->state.log.begin()))
+        throw std::runtime_error("local checkpoint differs from active committed history");
+    }
+    return encoded;
+  } catch (...) { impl_->failed = true; throw; }
+}
+SnapshotProgress Store::stage_snapshot(const SnapshotChunk& chunk) {
+  std::lock_guard lock(impl_->mutex); impl_->require_ledger();
+  const auto current = impl_->staged();
+  const auto next = append_snapshot_chunk(current,chunk); // Caller errors never poison active state.
+  if (next.complete()) (void)decode_snapshot(impl_->manifest,*impl_->genesis,next.data);
+  const SnapshotProgress progress{next.id,next.total_bytes,next.data.size(),next.complete()};
+  if (current && current->id == next.id && current->data == next.data) return progress;
+  const auto encoded = encode_snapshot_stage(next);
+  try {
+    rocksdb::WriteBatch batch; checked(batch.Put("snapshot/staging",encoded),"stage snapshot chunk");
+    if (impl_->hook) impl_->hook(StoreCrashPoint::before_stage);
+    impl_->sync(batch);
+    if (impl_->hook) impl_->hook(StoreCrashPoint::after_stage);
+    return progress;
+  } catch (...) { impl_->failed = true; throw; }
+}
+std::optional<SnapshotProgress> Store::staged_snapshot() const {
+  std::lock_guard lock(impl_->mutex); impl_->require_ledger();
+  const auto staged = impl_->staged();
+  if (!staged) return {};
+  return SnapshotProgress{staged->id,staged->total_bytes,staged->data.size(),staged->complete()};
+}
+void Store::discard_staged_snapshot() {
+  std::lock_guard lock(impl_->mutex); impl_->require_ledger();
+  try {
+    rocksdb::WriteBatch batch; checked(batch.Delete("snapshot/staging"),"discard staged snapshot"); impl_->sync(batch);
+  } catch (...) { impl_->failed = true; throw; }
+}
+bool Store::publish_staged_snapshot() {
+  std::lock_guard lock(impl_->mutex); impl_->require_ledger();
+  const auto staged = impl_->staged();
+  if (!staged || !staged->complete()) throw std::invalid_argument("snapshot staging is incomplete");
+  // Decode again after reopening or intervening disk writes, before any publication.
+  LedgerSnapshot snapshot;
+  try { snapshot = decode_snapshot(impl_->manifest,*impl_->genesis,staged->data); }
+  catch (...) { impl_->failed = true; throw; }
+  const auto index = snapshot.prefix.commit;
+  if (snapshot.prefix.term > impl_->state.term || index < impl_->state.commit || index < impl_->ledger->applied_index)
+    throw std::invalid_argument("snapshot would regress progress or exceed the persisted current term");
+  if (!std::equal(impl_->state.log.begin(),impl_->state.log.begin()+impl_->state.commit,snapshot.prefix.log.begin()))
+    throw std::invalid_argument("snapshot conflicts with local committed prefix");
+  State next = impl_->state; next.log = snapshot.prefix.log; next.commit = index;
+  if (index <= impl_->state.log.size() && impl_->state.log[index-1].term == snapshot.prefix.term) {
+    if (!std::equal(next.log.begin(),next.log.end(),impl_->state.log.begin()))
+      throw std::invalid_argument("matching snapshot boundary has a contradictory prefix");
+    next.log.insert(next.log.end(),impl_->state.log.begin()+index,impl_->state.log.end());
+  }
+  validate_persisted_transition(impl_->manifest,impl_->state,next);
+  const bool changed = next != impl_->state || snapshot.ledger != *impl_->ledger;
+  const auto encoded_state = encode_state_record(impl_->manifest,next);
+  const auto encoded_ledger = encode_state(snapshot.ledger);
+  try {
+    impl_->check_receipts(snapshot.receipts);
+    rocksdb::WriteBatch batch;
+    checked(batch.Put("raft/state",encoded_state),"publish snapshot Raft state");
+    checked(batch.Put("ledger/state",encoded_ledger),"publish snapshot ledger state");
+    for (const auto& [id,receipt] : snapshot.receipts)
+      checked(batch.Put(receipt_key(id),encode_receipt(receipt)),"publish snapshot receipt");
+    checked(batch.Put("snapshot/local",staged->data),"publish snapshot generation");
+    checked(batch.Delete("snapshot/staging"),"finish snapshot staging");
+    if (impl_->hook) impl_->hook(StoreCrashPoint::before_publish);
+    impl_->sync(batch); impl_->state = std::move(next); impl_->ledger = std::move(snapshot.ledger);
+    if (impl_->hook) impl_->hook(StoreCrashPoint::after_publish);
+    return changed;
   } catch (...) { impl_->failed = true; throw; }
 }
 } // namespace rollupx::raft

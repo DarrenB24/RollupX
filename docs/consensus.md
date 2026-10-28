@@ -1,11 +1,11 @@
 # Raft protocol and recovery plan
 
-The isolated C++ Raft core and deterministic five-node simulations are implemented;
-see [raft-core.md](raft-core.md) for tested behavior and limits. The deployed node
-still has no Raft integration. Probe messages are connectivity checks, not
-AppendEntries heartbeats or votes. The gRPC Raft methods remain UNIMPLEMENTED.
-The versioned [Raft persistence format and store](raft-persistence.md) are now
-implemented; actual RocksDB durability verification is still pending.
+The C++ Raft core, durable RocksDB store, runtime and gRPC transport now compose
+into the [replicated ledger node](replicated-node.md). Deterministic simulations
+and native five-process crash/restart tests verify the implemented path; see
+[raft-core.md](raft-core.md) and [raft-persistence.md](raft-persistence.md).
+Storage-level snapshot recovery is implemented; live `InstallSnapshot` and log
+compaction remain pending.
 
 Membership is static and odd, default five; quorum is floor(N/2)+1. One mutex/event
 loop owns protocol state. Timers use a monotonic injectable clock and seeded RNG
@@ -44,12 +44,16 @@ unapplied entries, then start elections and serving ledger reads. Fail closed on
 corruption or missing committed log data. An application WriteBatch includes the
 applied-index marker and all ledger effects, with WAL and sync enabled.
 
-A snapshot is built from a consistent DB snapshot at an applied index and includes
-accounts, receipts/deduplication IDs, batch/DA metadata, last included index/term,
-and format/genesis identity. Bound chunk size and total bytes; verify hashes and
-indices before installing a staged generation. Atomically publish a durable
-generation pointer before truncating old log/state. Installation never moves term,
-commit, or application progress backwards. Preserve a matching suffix where safe.
+The [snapshot store](raft-snapshots.md) captures a fully applied committed prefix
+under the store lock. It includes signed history, accounts, original receipts and
+configuration/genesis identity. Bounded chunks are staged independently of active
+state and audited by replay before one synchronous WriteBatch publishes the new
+Raft and ledger state. Local term/vote are preserved; progress cannot regress.
+A matching suffix is retained. These methods must run before attaching Runtime.
+
+The next milestone is live transfer integrated with protocol ownership and a
+compacted log representation that preserves receipt/batch audit guarantees.
+The current format retains the entire committed prefix and deletes no log data.
 
 ## Mandatory tests before Phase 3 completion
 
